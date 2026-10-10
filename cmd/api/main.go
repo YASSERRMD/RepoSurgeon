@@ -66,17 +66,26 @@ func run() error {
 		}
 	}
 
+	services := api.NewServices(
+		store.NewOrganizations(pool),
+		store.NewProjects(pool),
+		store.NewAudit(pool),
+		store.NewIdempotency(pool),
+	)
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
 		PendingMigrations: func(ctx context.Context) ([]migrations.Migration, error) {
 			return migrations.Pending(ctx, pool, cfg.MigrationsDir)
 		},
-		Logger:    logger,
-		Version:   version,
-		GitCommit: gitCommit,
-		BuildTime: buildTime,
+		Services:         services,
+		SubjectDirectory: api.NewSubjectDirectory(store.NewUsers(pool), store.NewOrganizations(pool)),
+		Logger:           logger,
+		Version:          version,
+		GitCommit:        gitCommit,
+		BuildTime:        buildTime,
 	})
+	logger.Info("m01 services wired", "services", "organizations, projects, audit, idempotency")
 	if err != nil {
 		return err
 	}

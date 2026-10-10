@@ -10,6 +10,9 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   secrets:
     name: secret scan
@@ -23,6 +26,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   sast:
     name: Go static analysis (gosec)

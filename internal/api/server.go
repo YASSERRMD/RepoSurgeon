@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
@@ -23,10 +24,15 @@ type Options struct {
 	// The wiring in cmd/api passes migrations.Pending bound to the pool; tests
 	// pass a fake.
 	PendingMigrations func(ctx context.Context) ([]migrations.Migration, error)
-	Logger            *slog.Logger
-	Version           string
-	GitCommit         string
-	BuildTime         string
+	// Services carries the M01 repositories. It is optional in M00-only
+	// tests; every M01 route requires it.
+	Services *Services
+	// SubjectDirectory resolves callers for the subject middleware.
+	SubjectDirectory SubjectDirectory
+	Logger           *slog.Logger
+	Version          string
+	GitCommit        string
+	BuildTime        string
 }
 
 // Server holds the dependencies shared by every route.
@@ -34,6 +40,8 @@ type Server struct {
 	cfg       *config.Config
 	db        health.Database
 	pendingFn func(ctx context.Context) ([]migrations.Migration, error)
+	services  *Services
+	directory SubjectDirectory
 	log       *slog.Logger
 	version   string
 	gitCommit string
@@ -57,10 +65,17 @@ func NewServer(opts Options) (*Server, error) {
 	if log == nil {
 		log = slog.Default()
 	}
+	if opts.Services != nil {
+		if err := opts.Services.Validate(); err != nil {
+			return nil, err
+		}
+	}
 	s := &Server{
 		cfg:       opts.Config,
 		db:        opts.DB,
 		pendingFn: opts.PendingMigrations,
+		services:  opts.Services,
+		directory: opts.SubjectDirectory,
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
 		gitCommit: orDefault(opts.GitCommit, "none"),
@@ -78,7 +93,21 @@ func NewServer(opts Options) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	router := NewRouter()
 	s.registerRoutes(router)
-	var h http.Handler = router
+	// The subject middleware wraps only the authenticated API surface. Health
+	// and system-info routes must keep working while the database is down —
+	// readiness is exactly what reports that outage — so they never depend on
+	// provisioning a caller.
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/") && s.directory != nil {
+			subjectMiddleware(devSubjectResolver{
+				env:       s.cfg.Env,
+				directory: s.directory,
+				log:       s.log,
+			}, router).ServeHTTP(w, r)
+			return
+		}
+		router.ServeHTTP(w, r)
+	})
 	h = corsMiddleware(s.cfg.CORSAllowedOrigins, h)
 	h = securityHeadersMiddleware(h)
 	h = recoverMiddleware(s.log, h)
@@ -91,6 +120,16 @@ func (s *Server) registerRoutes(router *Router) {
 	router.Handle(http.MethodGet, "/health/live", s.handleLive)
 	router.Handle(http.MethodGet, "/health/ready", s.handleReady)
 	router.Handle(http.MethodGet, "/api/v1/system/info", s.handleSystemInfo)
+	if s.services == nil {
+		return
+	}
+	router.Handle(http.MethodGet, "/api/v1/organizations", s.handleListOrganizations)
+	router.Handle(http.MethodPost, "/api/v1/organizations", s.handleCreateOrganization)
+	router.Handle(http.MethodGet, "/api/v1/projects", s.handleListProjects)
+	router.Handle(http.MethodPost, "/api/v1/projects", s.handleCreateProject)
+	router.Handle(http.MethodGet, "/api/v1/projects/{project_id}", s.handleGetProject)
+	router.Handle(http.MethodPatch, "/api/v1/projects/{project_id}", s.handleUpdateProject)
+	router.Handle(http.MethodGet, "/api/v1/audit", s.handleListAuditEvents)
 }
 
 func errRequired(name string) error {

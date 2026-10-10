@@ -49,18 +49,21 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // WriteError writes the canonical error envelope, echoing the request ID for
-// traceability. Library errors are reduced to a safe message; details are only
-// included when explicitly supplied.
+// traceability. Structured detail is taken from the explicit argument when
+// provided and otherwise from the Error value itself. Library errors are
+// reduced to a safe message; internal failure detail is logged, never sent.
 func WriteError(w http.ResponseWriter, r *http.Request, apiErr *Error, details any) {
 	if apiErr == nil {
 		apiErr = ErrInternal
+	}
+	if details == nil {
+		details = apiErr.Details
 	}
 	var body errorBody
 	body.Error.Code = apiErr.Code
 	message := apiErr.Message
 	if apiErr.Status >= http.StatusInternalServerError {
 		// Never leak internal failure detail to callers; log it instead.
-		message = apiErr.Message
 		if details != nil {
 			if logger, ok := r.Context().Value(loggerKey{}).(*slog.Logger); ok && logger != nil {
 				logger.Error("request failed", "code", apiErr.Code, "request_id", RequestID(r.Context()), "detail", details)
