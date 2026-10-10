@@ -20,7 +20,8 @@ code that enforces it and the test that proves it. Update as capabilities land.
    allowlist, a path scope and a budget before any execution.
 3. Workspace → host: only the isolated runner starts processes; it runs
    non-root with dropped capabilities, a read-only root filesystem, resource
-   quotas and no egress network.
+   quotas and no network path to the database or the API. Namespace-based
+   default-deny egress is added in M07.
 4. Runner → GitHub: only the trusted GitHub adapter holds credentials; run
    results flow back as typed receipts.
 5. API → StepFun: only authorized, redacted context crosses the provider

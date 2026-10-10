@@ -115,8 +115,9 @@ services:
     ports:
       - '8091:8091'
     # Hard isolation boundary: no host secrets, no Docker socket, dropped
-    # capabilities, read-only filesystem, resource quotas, private internal
-    # network with no egress. See docs/security/threat-model.md.
+    # capabilities, read-only filesystem, resource quotas, and a dedicated
+    # network with no access to postgres or the API. See
+    # docs/security/threat-model.md.
     user: '10001:10001'
     read_only: true
     tmpfs:
@@ -127,6 +128,13 @@ services:
     pids_limit: 128
     mem_limit: 512m
     cpus: 1.0
+    healthcheck:
+      # No curl in this image; a bash TCP probe is enough for liveness.
+      test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/8091 && echo ok']
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
     networks:
       - runner-net
 
@@ -154,11 +162,15 @@ services:
 networks:
   app-net:
     driver: bridge
-  # The runner network has no route to the internet or to other services; the
-  # worker joins it explicitly in later milestones that need execution.
+  # The runner is on its own network segment with no access to postgres or the
+  # API/worker, and it holds no credentials. Older revisions marked this
+  # network `internal: true`, which also made the published port unreachable
+  # from the host (Docker blocks external traffic to internal networks), so the
+  # separation is expressed per-service instead. Namespace-based default-deny
+  # egress (network namespace + seccomp profile) lands with M07 on the Linux
+  # runner image.
   runner-net:
     driver: bridge
-    internal: true
 
 volumes:
   pgdata:
