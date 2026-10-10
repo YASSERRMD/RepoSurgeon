@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+
+# RepoSurgeon worker image: same base as the API, different entrypoint.
+FROM golang:1.26.9-alpine AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+ARG VERSION=dev
+ARG GIT_COMMIT=none
+ARG BUILD_TIME=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT} -X main.buildTime=${BUILD_TIME}" \
+    -o /out/worker ./cmd/worker
+
+FROM alpine:3.21 AS runtime
+
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && addgroup -g 10001 -S reposurgeon \
+    && adduser -u 10001 -S reposurgeon -G reposurgeon
+
+COPY --from=build --chown=10001:10001 /out/worker /app/worker
+COPY --chown=10001:10001 migrations/ /app/migrations/
+
+USER 10001:10001
+WORKDIR /app
+ENV RS_MIGRATIONS_DIR=/app/migrations \
+    RS_LOG_FORMAT=json \
+    RS_WORKER_ADDR=:8080
+
+EXPOSE 8080
+ENTRYPOINT ["/app/worker"]
