@@ -1,0 +1,164 @@
+# RepoSurgeon local development stack.
+#
+# Services: postgres, api, worker, runner (isolated execution boundary), web.
+# Usage:  cp .env.example .env   # then edit secrets
+#         make dev               # or: docker compose up -d --build
+#
+# The API applies migrations on start by default; `make migrate-up` runs them
+# as a one-shot job instead. Secrets are never baked into images.
+
+name: reposurgeon
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reposurgeon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reposurgeon}
+      POSTGRES_DB: ${POSTGRES_DB:-reposurgeon}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-reposurgeon} -d ${POSTGRES_DB:-reposurgeon}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [app-net]
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VERSION: ${RS_VERSION:-dev}
+        GIT_COMMIT: ${RS_GIT_COMMIT:-none}
+        BUILD_TIME: ${RS_BUILD_TIME:-unknown}
+    command: ['-migrate-only']
+    restart: 'no'
+    environment:
+      RS_ENV: ${RS_ENV:-development}
+      RS_DATABASE_URL: ${RS_DATABASE_URL:-postgres://reposurgeon:reposurgeon@postgres:5432/reposurgeon?sslmode=disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [app-net]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VERSION: ${RS_VERSION:-dev}
+        GIT_COMMIT: ${RS_GIT_COMMIT:-none}
+        BUILD_TIME: ${RS_BUILD_TIME:-unknown}
+    restart: unless-stopped
+    environment:
+      RS_ENV: ${RS_ENV:-development}
+      RS_DATABASE_URL: ${RS_DATABASE_URL:-postgres://reposurgeon:reposurgeon@postgres:5432/reposurgeon?sslmode=disable}
+      RS_HTTP_ADDR: ':8080'
+      RS_MIGRATE_ON_START: ${RS_MIGRATE_ON_START:-true}
+      RS_CORS_ALLOWED_ORIGINS: ${RS_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+    ports:
+      - '8081:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks: [app-net]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        VERSION: ${RS_VERSION:-dev}
+        GIT_COMMIT: ${RS_GIT_COMMIT:-none}
+        BUILD_TIME: ${RS_BUILD_TIME:-unknown}
+    restart: unless-stopped
+    environment:
+      RS_ENV: ${RS_ENV:-development}
+      RS_DATABASE_URL: ${RS_DATABASE_URL:-postgres://reposurgeon:reposurgeon@postgres:5432/reposurgeon?sslmode=disable}
+      RS_WORKER_ADDR: ':8080'
+      RS_LOG_LEVEL: ${RS_LOG_LEVEL:-info}
+    ports:
+      - '8082:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/healthz']
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+    networks: [app-net]
+
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    restart: unless-stopped
+    environment:
+      RS_ENV: ${RS_ENV:-development}
+      RS_RUNNER_ADDR: ':8091'
+      RS_RUNNER_TOKEN: ${RS_RUNNER_TOKEN:?set RS_RUNNER_TOKEN in .env (see .env.example)}
+      RS_RUNNER_ALLOWED_PROGRAMS: ${RS_RUNNER_ALLOWED_PROGRAMS:-/bin/echo,/usr/bin/seq}
+      RS_RUNNER_WORKSPACE_ROOT: /app/workspaces
+    ports:
+      - '8091:8091'
+    # Hard isolation boundary: no host secrets, no Docker socket, dropped
+    # capabilities, read-only filesystem, resource quotas, private internal
+    # network with no egress. See docs/security/threat-model.md.
+    user: '10001:10001'
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    networks:
+      - runner-net
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_APP_VERSION: ${RS_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      API_UPSTREAM: http://api:8080
+    ports:
+      - '8080:80'
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ >/dev/null || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    networks: [app-net]
+
+networks:
+  app-net:
+    driver: bridge
+  # The runner network has no route to the internet or to other services; the
+  # worker joins it explicitly in later milestones that need execution.
+  runner-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  pgdata:
