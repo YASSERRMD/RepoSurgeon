@@ -1,0 +1,60 @@
+# RepoSurgeon lint configuration (golangci-lint v2).
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - misspell
+    - unconvert
+    - prealloc
+    - revive
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      exclude-functions:
+        - (github.com/jackc/pgx/v5.Tx).Rollback
+    gosec:
+      excludes:
+        - G104 # audited explicitly: unhandled error returns are checked
+        - G304 # file paths come from configuration, validated by callers
+    revive:
+      rules:
+        - name: exported
+          disabled: false
+        - name: package-comments
+          disabled: false
+        - name: var-naming
+          disabled: false
+    misspell:
+      locale: US
+
+  exclusions:
+    rules:
+      # Test files may use relaxed error handling.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - bodyclose
+    paths:
+      # No first-party Go code lives under web/; its npm packages contain
+      # unrelated Go sources that must not be linted.
+      - ^web/
+
+formatters:
+  enable:
+    - gofmt
