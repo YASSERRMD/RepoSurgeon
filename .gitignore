@@ -31,3 +31,4 @@ workspaces/
 
 # Temporary verification artifacts (never commit captured credentials)
 /tmp/
+*.tsbuildinfo
