@@ -1,0 +1,67 @@
+name: compose-smoke
+
+on:
+  push:
+    branches: [main, 'milestone/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: image build and compose smoke
+    runs-on: ubuntu-24.04
+    env:
+      RS_RUNNER_TOKEN: ci-smoke-token-not-a-secret
+      RS_RUNNER_ALLOWED_PROGRAMS: /bin/echo,/usr/bin/seq
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose smoke
+        run: bash scripts/smoke-compose.sh
+
+  e2e:
+    name: Playwright browser E2E
+    runs-on: ubuntu-24.04
+    needs: smoke
+    env:
+      RS_RUNNER_TOKEN: ci-smoke-token-not-a-secret
+      E2E_BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        run: |
+          docker compose -p reposurgeon-e2e build
+          docker compose -p reposurgeon-e2e up -d
+          for _ in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8081/health/ready || true)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          test "$code" = "200"
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright suite
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p reposurgeon-e2e down -v --remove-orphans
