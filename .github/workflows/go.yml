@@ -1,0 +1,69 @@
+name: go
+
+on:
+  push:
+    branches: [main, 'milestone/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: go-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: format, vet, lint, race tests
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reposurgeon
+          POSTGRES_PASSWORD: reposurgeon
+          POSTGRES_DB: reposurgeon_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U reposurgeon -d reposurgeon_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      RS_TEST_DATABASE_URL: postgres://reposurgeon:reposurgeon@localhost:5432/reposurgeon_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.6.0
+          args: --timeout 5m
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests
+        run: go test -count=1 ./...
+
+      - name: Migration and store integration tests (real PostgreSQL)
+        run: go test -count=1 -race ./internal/migrations/... -v
+
+      - name: Full race suite
+        run: go test -race -count=1 ./...
+
+      - name: Vulnerability check
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./...
