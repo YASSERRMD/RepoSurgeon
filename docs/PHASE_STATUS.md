@@ -29,6 +29,12 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 
 ## Log
 
+### 2026-10-10 — M01 pushed; stale M00 merge detected
+
+- PR #1 merged an earlier branch ref, leaving three M00 fixes off `main`
+  (golangci-lint pin, runner network, smoke wait). PR #2 re-applies them so
+  main returns to green; this is disclosed here rather than silently fixed.
+
 ### 2026-10-10 — M01 merged
 
 - PR #2 merged into `main`; all CI green on the final head.
