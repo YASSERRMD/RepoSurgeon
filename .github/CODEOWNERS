@@ -1,0 +1,11 @@
+# Default owners for everything; refine per area as the team grows.
+* @YASSERRMD
+
+# Security-critical boundaries require owner review.
+/internal/runner/ @YASSERRMD
+/internal/policy/ @YASSERRMD
+/internal/auth/ @YASSERRMD
+/migrations/ @YASSERRMD
+/.github/workflows/ @YASSERRMD
+/docker-compose.yml @YASSERRMD
+/.env.example @YASSERRMD
