@@ -16,6 +16,8 @@ check() {
     echo "PASS: $label ($actual)"
   else
     echo "FAIL: $label expected $expected got $actual"
+    "${compose[@]}" ps >&2 || true
+    "${compose[@]}" logs --tail 60 runner api web >&2 || true
     failures=$((failures + 1))
   fi
 }
@@ -56,6 +58,16 @@ check "web index" "200" "$web"
 
 proxied="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/api/v1/system/info || true)"
 check "web proxies api" "200" "$proxied"
+
+# Wait for the runner to accept connections; compose returns as soon as the
+# container exists, not when the process inside is listening.
+runner_up=""
+for _ in $(seq 1 30); do
+  runner_up="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8091/v1/healthz || true)"
+  [ "$runner_up" = "200" ] && break
+  sleep 2
+done
+check "runner healthz reachability" "200" "$runner_up"
 
 runner_health="$(curl -s --max-time 10 http://127.0.0.1:8091/v1/healthz || true)"
 echo "runner healthz: $runner_health"
