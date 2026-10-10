@@ -22,12 +22,21 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | Phase | Branch | Status | PR | Merge SHA | Evidence |
 |---|---|---|---|---|---|
 | M00 — Repository foundation & engineering governance | merged (branch deleted) | PR https://github.com/YASSERRMD/RepoSurgeon/pull/1 | `d69e78b2dea17a9744c842e0419c766e826d7747` | `docs/milestone-reports/M00.md` |
-| M01 — Domain model, persistence, project isolation | `milestone/m01-domain-model-persistence-and-project-isolation` | in progress | — | — | — |
-| M02 — Authentication, authorization, secure credentials | — | not started | — | — | — |
+| M01 — Domain model, persistence, project isolation | merged, branch deleted | PR https://github.com/YASSERRMD/RepoSurgeon/pull/2 | recorded in M02 report | `docs/milestone-reports/M01.md` |
+| M02 — Authentication, authorization, secure credentials | — | next | — | — | — |
 | M03 | — | not started | — | — | — |
 | … M19 | — | not started | — | — | — |
 
 ## Log
+
+### 2026-10-10 — M01 merged
+
+- PR #2 merged into `main`; all CI green on the final head.
+- Local evidence: `RS_TEST_DATABASE_URL` race suite across 9 packages, 92 Vue unit tests,
+  8 Playwright browser tests, HTTP smoke against local PostgreSQL 16 covering tenant
+  isolation, optimistic concurrency conflicts, idempotent replay and the audit trail.
+- Known interim risk carried into M02: the development subject resolver (documented,
+  production-disabled).
 
 ### 2026-10-10 — M00 merged
 
