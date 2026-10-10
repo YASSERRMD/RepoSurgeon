@@ -6,7 +6,8 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 
 | Phase | Capability | Branch | Status | PR | Merge SHA |
 |---|---|---|---|---|---|
-| M00 | Repository foundation and engineering governance | `milestone/m00-repository-foundation-and-engineering-governance` | in review | — | — |
+| M00 | Repository foundation and engineering governance | merged, branch deleted | merged | #1 | `d69e78b` |
+| M01 | Domain model, persistence, project isolation | `milestone/m01-domain-model-persistence-and-project-isolation` | in progress | — | — |
 | M01 | Domain model, persistence, project isolation | — | not started | — | — |
 | M02 | Authentication, authorization, secure credentials | — | not started | — | — |
 | M03 | Step 5 Preview model gateway and tool calling | — | not started | — | — |
