@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.1.0
+  version: 0.2.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -14,11 +14,29 @@ info:
     - `X-Request-ID` is accepted and echoed on every response.
     - Cursor pagination uses `{ "items": [...], "next_cursor": "..." }`.
     - Failures use the canonical `Error` envelope with a stable `code`.
+    - Organization and project scoping is enforced on every request; a caller
+      never receives another organization's records.
+
+    Milestone M01 note: authentication lands in M02. Until then the API
+    resolves the calling subject from the `X-Dev-Subject` header, which is
+    accepted only outside production environments.
 servers:
   - url: http://localhost:8081
     description: Local API (docker compose / make dev)
   - url: http://localhost:8080
     description: Same-origin behind the web proxy
+
+tags:
+  - name: health
+    description: Process liveness and readiness
+  - name: system
+    description: Service metadata
+  - name: organizations
+    description: Tenant isolation boundary
+  - name: projects
+    description: Workspaces inside an organization
+  - name: audit
+    description: Append-only activity trail
 
 paths:
   /health/live:
@@ -48,9 +66,8 @@ paths:
       summary: Readiness probe
       description: |
         Returns 200 only when the database is reachable and no critical
-        migration is pending. Returns 503 with per-check detail otherwise;
-        the response is safe to show to operators and never contains
-        credentials.
+        migration is pending. Returns 503 with per-check detail otherwise; the
+        response is safe to show to operators and never contains credentials.
       security: []
       responses:
         '200':
@@ -67,7 +84,6 @@ paths:
                     duration_ms: 2
                   - name: migrations
                     status: up
-                    detail: ''
                     duration_ms: 3
                 generated_at: '2026-10-10T10:00:00Z'
         '503':
@@ -76,22 +92,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadinessReport'
-              example:
-                status: unavailable
-                checks:
-                  - name: database
-                    status: down
-                    detail: database unreachable; verify PostgreSQL is running and RS_DATABASE_URL is correct
-                    duration_ms: 5000
-                generated_at: '2026-10-10T10:00:00Z'
 
   /api/v1/system/info:
     get:
       operationId: getSystemInfo
       summary: Running service metadata
-      description: |
-        Build and environment facts for the UI footer and diagnostics. Contains
-        no configuration secrets.
       security: []
       responses:
         '200':
@@ -100,15 +105,260 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SystemInfo'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/organizations:
+    get:
+      operationId: listOrganizations
+      summary: List organizations the caller belongs to
+      tags: [organizations]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of organizations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationPage'
               example:
-                name: reposurgeon
-                version: 0.1.0
-                git_commit: 9a1aecc
-                build_time: '2026-10-10T10:00:00Z'
-                environment: development
-                go_version: go1.25.5
-                started_at: '2026-10-10T09:59:00Z'
-                uptime_seconds: 60
+                items:
+                  - id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                    slug: acme-engineering
+                    name: Acme Engineering
+                    role: owner
+                    created_at: '2026-10-10T10:00:00Z'
+                    updated_at: '2026-10-10T10:00:00Z'
+                next_cursor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createOrganization
+      summary: Create an organization
+      description: |
+        The caller becomes an owner of the new organization. Requires an
+        `Idempotency-Key`; repeating the key returns the created organization.
+      tags: [organizations]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+            example:
+              name: Acme Engineering
+              slug: acme-engineering
+      responses:
+        '201':
+          description: Organization created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/projects:
+    get:
+      operationId: listProjects
+      summary: List projects in an organization
+      tags: [projects]
+      parameters:
+        - name: organization_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Organization whose projects are listed; the caller must belong to it.
+        - $ref: '#/components/parameters/Query'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of projects, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPage'
+              example:
+                items:
+                  - id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+                    organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                    name: billing-service
+                    description: Payments and invoicing
+                    version: 3
+                    created_at: '2026-10-10T10:00:00Z'
+                    updated_at: '2026-10-10T11:30:00Z'
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createProject
+      summary: Create a project
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+            example:
+              organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+              name: billing-service
+              description: Payments and invoicing
+      responses:
+        '201':
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getProject
+      summary: Get one project
+      tags: [projects]
+      responses:
+        '200':
+          description: Project detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateProject
+      summary: Update project name, description or settings
+      description: |
+        Optimistic concurrency: send the `version` you last read. The server
+        only applies the change when the stored version still matches, and
+        returns 409 with the current version when it does not.
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+            example:
+              version: 3
+              description: Payments, invoicing and refunds
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/audit:
+    get:
+      operationId: listAuditEvents
+      summary: List audit events for a project
+      description: |
+        Append-only activity trail. Requires `project_id`; the caller must be a
+        member of the owning organization.
+      tags: [audit]
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact action filter, for example `project.created`.
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of audit events, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventPage'
+              example:
+                items:
+                  - id: aud_9p0o8i7u6y5t4r3e2w1q
+                    organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                    project_id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+                    actor_id: usr_1a2b3c4d5e6f7g8h9i0j
+                    action: project.created
+                    entity_type: project
+                    entity_id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+                    request_id: req_4f2a1b3c5d6e7f8a9b0c
+                    payload:
+                      name: billing-service
+                    sequence: 12
+                    created_at: '2026-10-10T10:00:00Z'
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -121,10 +371,8 @@ components:
         status:
           type: string
           enum: [ok]
-          description: Always `ok` when the process is alive.
         uptime_seconds:
           type: number
-          description: Seconds since the process started.
 
     ReadinessReport:
       type: object
@@ -147,16 +395,13 @@ components:
       properties:
         name:
           type: string
-          description: Dependency name, for example `database` or `migrations`.
         status:
           type: string
           enum: [up, down]
         detail:
           type: string
-          description: Operator-facing remediation text when status is `down`.
         duration_ms:
           type: integer
-          description: Evaluation duration in milliseconds.
 
     SystemInfo:
       type: object
@@ -181,6 +426,177 @@ components:
         uptime_seconds:
           type: number
 
+    OrganizationRole:
+      type: string
+      enum: [owner, admin, member, viewer]
+
+    Organization:
+      type: object
+      required: [id, slug, name, role, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: Opaque organization identifier.
+        slug:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        role:
+          $ref: '#/components/schemas/OrganizationRole'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrganizationPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+        next_cursor:
+          type: [string, 'null']
+
+    OrganizationCreate:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$'
+
+    Project:
+      type: object
+      required: [id, organization_id, name, description, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        version:
+          type: integer
+          description: Optimistic concurrency version; send it back on PATCH.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        next_cursor:
+          type: [string, 'null']
+
+    ProjectCreate:
+      type: object
+      required: [organization_id, name]
+      properties:
+        organization_id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+
+    ProjectUpdate:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          description: Version the client last read; mismatch returns 409.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        settings:
+          type: object
+          additionalProperties: true
+          description: Project settings object; unknown keys are rejected.
+
+    ConflictDetail:
+      type: object
+      required: [code, current_version]
+      properties:
+        code:
+          type: string
+          enum: [version_mismatch, duplicate_name]
+        current_version:
+          type: integer
+          description: Present for version_mismatch so clients can reload.
+          minimum: 0
+
+    AuditEvent:
+      type: object
+      required: [id, organization_id, action, entity_type, request_id, sequence, created_at]
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        project_id:
+          type: [string, 'null']
+        actor_id:
+          type: [string, 'null']
+        action:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: [string, 'null']
+        request_id:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        sequence:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    AuditEventPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        next_cursor:
+          type: [string, 'null']
+
     Error:
       type: object
       required: [error]
@@ -191,18 +607,72 @@ components:
           properties:
             code:
               type: string
-              description: Stable machine-readable error code.
             message:
               type: string
             request_id:
               type: string
-              description: Correlation ID echoed from the X-Request-ID header.
             details:
               type: object
               additionalProperties: true
-              description: Optional structured detail for client-correctable errors.
 
   responses:
+    BadRequest:
+      description: Client-correctable request error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: validation_failed
+              message: name is required
+              request_id: req_0123456789abcdef
+    Unauthorized:
+      description: No authenticated subject.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: unauthenticated
+              message: authentication is required
+              request_id: req_0123456789abcdef
+    PermissionDenied:
+      description: Subject lacks the required role for this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: permission_denied
+              message: you do not have access to this organization
+              request_id: req_0123456789abcdef
+    NotFound:
+      description: Resource does not exist (or is not visible to this subject).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: not_found
+              message: resource not found
+              request_id: req_0123456789abcdef
+    Conflict:
+      description: Optimistic concurrency or uniqueness conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: version_mismatch
+              message: project was modified by someone else
+              request_id: req_0123456789abcdef
+              details:
+                current_version: 4
     InternalError:
       description: Unexpected server failure. The body never contains internal detail.
       content:
@@ -227,10 +697,43 @@ components:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
+      required: true
       description: |
-        Required for create/run/PR operations. Repeating a request with the
+        Required for create/update operations. Repeating a request with the
         same key returns the original result instead of duplicating effects.
       schema:
         type: string
+        minLength: 8
         maxLength: 128
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor from a previous `next_cursor`.
+      schema:
+        type: string
+        maxLength: 512
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size (1-100, default 20).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Query:
+      name: q
+      in: query
+      required: false
+      description: Case-insensitive name filter.
+      schema:
+        type: string
+        maxLength: 120

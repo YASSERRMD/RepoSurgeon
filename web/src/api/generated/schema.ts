@@ -35,9 +35,8 @@ export interface paths {
         /**
          * Readiness probe
          * @description Returns 200 only when the database is reachable and no critical
-         *     migration is pending. Returns 503 with per-check detail otherwise;
-         *     the response is safe to show to operators and never contains
-         *     credentials.
+         *     migration is pending. Returns 503 with per-check detail otherwise; the
+         *     response is safe to show to operators and never contains credentials.
          */
         get: operations["getReadiness"];
         put?: never;
@@ -55,12 +54,94 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Running service metadata
-         * @description Build and environment facts for the UI footer and diagnostics. Contains
-         *     no configuration secrets.
-         */
+        /** Running service metadata */
         get: operations["getSystemInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List organizations the caller belongs to */
+        get: operations["listOrganizations"];
+        put?: never;
+        /**
+         * Create an organization
+         * @description The caller becomes an owner of the new organization. Requires an
+         *     `Idempotency-Key`; repeating the key returns the created organization.
+         */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List projects in an organization */
+        get: operations["listProjects"];
+        put?: never;
+        /** Create a project */
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** Get one project */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update project name, description or settings
+         * @description Optimistic concurrency: send the `version` you last read. The server
+         *     only applies the change when the stored version still matches, and
+         *     returns 409 with the current version when it does not.
+         */
+        patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/api/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events for a project
+         * @description Append-only activity trail. Requires `project_id`; the caller must be a
+         *     member of the owning organization.
+         */
+        get: operations["listAuditEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -74,12 +155,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         LiveStatus: {
-            /**
-             * @description Always `ok` when the process is alive.
-             * @enum {string}
-             */
+            /** @enum {string} */
             status: "ok";
-            /** @description Seconds since the process started. */
             uptime_seconds: number;
         };
         ReadinessReport: {
@@ -90,13 +167,10 @@ export interface components {
             generated_at: string;
         };
         HealthCheck: {
-            /** @description Dependency name, for example `database` or `migrations`. */
             name: string;
             /** @enum {string} */
             status: "up" | "down";
-            /** @description Operator-facing remediation text when status is `down`. */
             detail?: string;
-            /** @description Evaluation duration in milliseconds. */
             duration_ms: number;
         };
         SystemInfo: {
@@ -111,14 +185,89 @@ export interface components {
             started_at: string;
             uptime_seconds: number;
         };
+        /** @enum {string} */
+        OrganizationRole: "owner" | "admin" | "member" | "viewer";
+        Organization: {
+            /** @description Opaque organization identifier. */
+            id: string;
+            slug: string;
+            name: string;
+            role: components["schemas"]["OrganizationRole"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        OrganizationPage: {
+            items: components["schemas"]["Organization"][];
+            next_cursor: string | null;
+        };
+        OrganizationCreate: {
+            name: string;
+            slug: string;
+        };
+        Project: {
+            id: string;
+            organization_id: string;
+            name: string;
+            description: string;
+            /** @description Optimistic concurrency version; send it back on PATCH. */
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ProjectPage: {
+            items: components["schemas"]["Project"][];
+            next_cursor: string | null;
+        };
+        ProjectCreate: {
+            organization_id: string;
+            name: string;
+            description?: string;
+        };
+        ProjectUpdate: {
+            /** @description Version the client last read; mismatch returns 409. */
+            version: number;
+            name?: string;
+            description?: string;
+            /** @description Project settings object; unknown keys are rejected. */
+            settings?: {
+                [key: string]: unknown;
+            };
+        };
+        ConflictDetail: {
+            /** @enum {string} */
+            code: "version_mismatch" | "duplicate_name";
+            /** @description Present for version_mismatch so clients can reload. */
+            current_version: number;
+        };
+        AuditEvent: {
+            id: string;
+            organization_id: string;
+            project_id?: string | null;
+            actor_id?: string | null;
+            action: string;
+            entity_type: string;
+            entity_id?: string | null;
+            request_id: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+            sequence: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AuditEventPage: {
+            items: components["schemas"]["AuditEvent"][];
+            next_cursor: string | null;
+        };
         Error: {
             error: {
-                /** @description Stable machine-readable error code. */
                 code: string;
                 message: string;
-                /** @description Correlation ID echoed from the X-Request-ID header. */
                 request_id: string;
-                /** @description Optional structured detail for client-correctable errors. */
                 details?: {
                     [key: string]: unknown;
                 };
@@ -126,6 +275,99 @@ export interface components {
         };
     };
     responses: {
+        /** @description Client-correctable request error. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "validation_failed",
+                 *         "message": "name is required",
+                 *         "request_id": "req_0123456789abcdef"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No authenticated subject. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "unauthenticated",
+                 *         "message": "authentication is required",
+                 *         "request_id": "req_0123456789abcdef"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Subject lacks the required role for this resource. */
+        PermissionDenied: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "permission_denied",
+                 *         "message": "you do not have access to this organization",
+                 *         "request_id": "req_0123456789abcdef"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Resource does not exist (or is not visible to this subject). */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "not_found",
+                 *         "message": "resource not found",
+                 *         "request_id": "req_0123456789abcdef"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Optimistic concurrency or uniqueness conflict. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "version_mismatch",
+                 *         "message": "project was modified by someone else",
+                 *         "request_id": "req_0123456789abcdef",
+                 *         "details": {
+                 *           "current_version": 4
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Unexpected server failure. The body never contains internal detail. */
         InternalError: {
             headers: {
@@ -149,10 +391,17 @@ export interface components {
         /** @description Correlation ID; echoed on the response and in server logs. */
         RequestID: string;
         /**
-         * @description Required for create/run/PR operations. Repeating a request with the
+         * @description Required for create/update operations. Repeating a request with the
          *     same key returns the original result instead of duplicating effects.
          */
         IdempotencyKey: string;
+        ProjectId: string;
+        /** @description Opaque pagination cursor from a previous `next_cursor`. */
+        Cursor: string;
+        /** @description Page size (1-100, default 20). */
+        Limit: number;
+        /** @description Case-insensitive name filter. */
+        Query: string;
     };
     requestBodies: never;
     headers: never;
@@ -214,7 +463,6 @@ export interface operations {
                      *         {
                      *           "name": "migrations",
                      *           "status": "up",
-                     *           "detail": "",
                      *           "duration_ms": 3
                      *         }
                      *       ],
@@ -230,20 +478,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "status": "unavailable",
-                     *       "checks": [
-                     *         {
-                     *           "name": "database",
-                     *           "status": "down",
-                     *           "detail": "database unreachable; verify PostgreSQL is running and RS_DATABASE_URL is correct",
-                     *           "duration_ms": 5000
-                     *         }
-                     *       ],
-                     *       "generated_at": "2026-10-10T10:00:00Z"
-                     *     }
-                     */
                     "application/json": components["schemas"]["ReadinessReport"];
                 };
             };
@@ -264,21 +498,308 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "name": "reposurgeon",
-                     *       "version": "0.1.0",
-                     *       "git_commit": "9a1aecc",
-                     *       "build_time": "2026-10-10T10:00:00Z",
-                     *       "environment": "development",
-                     *       "go_version": "go1.25.5",
-                     *       "started_at": "2026-10-10T09:59:00Z",
-                     *       "uptime_seconds": 60
-                     *     }
-                     */
                     "application/json": components["schemas"]["SystemInfo"];
                 };
             };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listOrganizations: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of organizations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "slug": "acme-engineering",
+                     *           "name": "Acme Engineering",
+                     *           "role": "owner",
+                     *           "created_at": "2026-10-10T10:00:00Z",
+                     *           "updated_at": "2026-10-10T10:00:00Z"
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Acme Engineering",
+                 *       "slug": "acme-engineering"
+                 *     }
+                 */
+                "application/json": components["schemas"]["OrganizationCreate"];
+            };
+        };
+        responses: {
+            /** @description Organization created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query: {
+                /** @description Organization whose projects are listed; the caller must belong to it. */
+                organization_id: string;
+                /** @description Case-insensitive name filter. */
+                q?: components["parameters"]["Query"];
+                /** @description Opaque pagination cursor from a previous `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of projects, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "prj_7h2k9m4q8w3e6r1t5y0u2i4o6p",
+                     *           "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "name": "billing-service",
+                     *           "description": "Payments and invoicing",
+                     *           "version": 3,
+                     *           "created_at": "2026-10-10T10:00:00Z",
+                     *           "updated_at": "2026-10-10T11:30:00Z"
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProjectPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                 *       "name": "billing-service",
+                 *       "description": "Payments and invoicing"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Project created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                project_id: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "version": 3,
+                 *       "description": "Payments, invoicing and refunds"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAuditEvents: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description Exact action filter, for example `project.created`. */
+                action?: string;
+                /** @description Opaque pagination cursor from a previous `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of audit events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "aud_9p0o8i7u6y5t4r3e2w1q",
+                     *           "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "project_id": "prj_7h2k9m4q8w3e6r1t5y0u2i4o6p",
+                     *           "actor_id": "usr_1a2b3c4d5e6f7g8h9i0j",
+                     *           "action": "project.created",
+                     *           "entity_type": "project",
+                     *           "entity_id": "prj_7h2k9m4q8w3e6r1t5y0u2i4o6p",
+                     *           "request_id": "req_4f2a1b3c5d6e7f8a9b0c",
+                     *           "payload": {
+                     *             "name": "billing-service"
+                     *           },
+                     *           "sequence": 12,
+                     *           "created_at": "2026-10-10T10:00:00Z"
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AuditEventPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };
