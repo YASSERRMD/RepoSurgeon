@@ -1,0 +1,56 @@
+name: web
+
+on:
+  push:
+    branches: [main, 'milestone/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: lint, format, types, tests, build, contract drift
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: OpenAPI client drift check
+        run: |
+          npm run gen:client
+          if ! git diff --exit-code -- src/api/generated/schema.ts; then
+            echo "::error::Generated client drifted from api/openapi.yaml. Run 'npm run gen:client' in web/ and commit the result."
+            exit 1
+          fi
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
