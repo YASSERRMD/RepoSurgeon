@@ -6,14 +6,43 @@ import (
 	"testing"
 	"time"
 
+	"github.com/YASSERRMD/RepoSurgeon/internal/ids"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// openTestPool connects to the test database inside a schema created for this
+// test run. The migration runner records its ledger in the first schema of the
+// search path, so a unique schema per run keeps results independent of any
+// migrations another test (or a deployment) already applied to the same
+// database.
 func openTestPool(t *testing.T, dsn string) (*pgxpool.Pool, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
+
+	schema := "migtest_" + ids.MustNew("run")
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS "+schema); err != nil {
+		admin.Close()
+		return nil, err
+	}
+	admin.Close()
+
+	poolCfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	// Pin every connection of this run to the isolated schema. A URL options
+	// parameter would need careful escaping; AfterConnect is unambiguous.
+	poolCfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(context.Background(), "SET search_path TO "+schema)
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -21,6 +50,12 @@ func openTestPool(t *testing.T, dsn string) (*pgxpool.Pool, error) {
 		pool.Close()
 		return nil, err
 	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+		pool.Close()
+	})
 	return pool, nil
 }
 
