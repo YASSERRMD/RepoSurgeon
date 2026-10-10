@@ -1,0 +1,90 @@
+/* RepoSurgeon brand tokens: navy authority, restrained gold, gray structure,
+   off-white canvas. Shared by every component through CSS custom properties. */
+:root {
+  --color-navy: #0a1f44;
+  --color-navy-soft: #16305f;
+  --color-gold: #c9a227;
+  --color-gold-soft: #f4ead0;
+  --color-gray-line: #e5e7eb;
+  --color-canvas: #fbfaf7;
+  --color-surface: #ffffff;
+  --color-text: #16202f;
+  --color-text-muted: #5b6574;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-ok: #1c7c46;
+  --color-ok-soft: #e8f5ee;
+  --color-warn: #a15c07;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --shadow-card: 0 1px 2px rgb(10 31 68 / 6%), 0 4px 16px rgb(10 31 68 / 4%);
+
+  font-family:
+    'Inter',
+    'SF Pro Text',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--color-text);
+  background: var(--color-canvas);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--color-navy);
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Utility classes used by components */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-env {
+  background: var(--color-gold-soft);
+  color: var(--color-navy);
+  border: 1px solid rgb(201 162 39 / 35%);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-gray-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
