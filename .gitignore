@@ -1,0 +1,33 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Go
+/bin/
+/dist/
+coverage.out
+
+# Node / Vue
+node_modules/
+web/dist/
+web/coverage/
+test-results/
+playwright-report/
+.blob-report/
+.playwright/
+
+# Local runtime state
+workspaces/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Temporary verification artifacts (never commit captured credentials)
+/tmp/
