@@ -4,6 +4,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 import App from './App.vue';
 import HomeView from './views/HomeView.vue';
+import OrganizationsView from './views/OrganizationsView.vue';
+import ProjectsView from './views/ProjectsView.vue';
+import ProjectDetailView from './views/ProjectDetailView.vue';
 import './styles/theme.css';
 
 const router = createRouter({
@@ -14,6 +17,24 @@ const router = createRouter({
       name: 'home',
       component: HomeView,
       meta: { title: 'Operational status' },
+    },
+    {
+      path: '/organizations',
+      name: 'organizations',
+      component: OrganizationsView,
+      meta: { title: 'Organizations' },
+    },
+    {
+      path: '/projects',
+      name: 'projects',
+      component: ProjectsView,
+      meta: { title: 'Projects' },
+    },
+    {
+      path: '/projects/:projectId',
+      name: 'project-detail',
+      component: ProjectDetailView,
+      meta: { title: 'Project' },
     },
   ],
 });

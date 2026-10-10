@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { createMemoryHistory, createRouter } from 'vue-router';
 
 import App from './App.vue';
 import { useHealthStore, type OperationalStatus } from '@/stores/health';
+import { useOrganizationsStore } from '@/stores/organizations';
 
 function stubResponses(): void {
   vi.stubGlobal(
@@ -17,37 +19,91 @@ function stubResponses(): void {
   );
 }
 
+function routerStub() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/organizations', component: { template: '<div />' } },
+      { path: '/projects', component: { template: '<div />' } },
+      { path: '/organizations/:id', component: { template: '<div />' } },
+    ],
+  });
+}
+
 beforeEach(() => {
   setActivePinia(createPinia());
+  window.localStorage.clear();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 describe('App shell', () => {
-  it('renders the brand', () => {
+  it('renders the brand and the primary navigation', async () => {
     stubResponses();
-    const wrapper = mount(App, { global: { plugins: [createPinia(), createRouterStub()] } });
+    const router = routerStub();
+    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
 
     expect(wrapper.text()).toContain('RepoSurgeon');
     expect(wrapper.find('[data-testid="footer-status"]').text()).toBeTruthy();
+
+    const links = wrapper.findAll('nav a');
+    expect(links.map((link) => link.attributes('href'))).toEqual([
+      '/',
+      '/organizations',
+      '/projects',
+    ]);
+    await wrapper.vm.$nextTick();
+  });
+
+  it('shows the active organization name when one is selected', async () => {
+    stubResponses();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              String(input).includes('/api/v1/organizations')
+                ? {
+                    items: [
+                      {
+                        id: 'org_acme',
+                        slug: 'acme-engineering',
+                        name: 'Acme Engineering',
+                        role: 'owner',
+                        created_at: '2026-10-10T10:00:00Z',
+                        updated_at: '2026-10-10T10:00:00Z',
+                      },
+                    ],
+                    next_cursor: null,
+                  }
+                : { status: 'ok', uptime_seconds: 1 },
+            ),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    window.localStorage.setItem('reposurgeon.activeOrganization', 'org_acme');
+    const router = routerStub();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useOrganizationsStore().activeOrganization).not.toBeNull();
+    expect(wrapper.find('[data-testid="active-org"]').text()).toBe('Acme Engineering');
   });
 });
-
-// Minimal router stub: App.vue renders RouterView, which needs a router context.
-function createRouterStub() {
-  return {
-    install(app: { component: (name: string, def: unknown) => void }) {
-      app.component('RouterView', { template: '<div />' });
-    },
-  };
-}
 
 describe('shell status copy', () => {
   it('maps every store status to a label', () => {
     stubResponses();
-    mount(App, { global: { plugins: [createPinia(), createRouterStub()] } });
+    mount(App, { global: { plugins: [createPinia(), routerStub()] } });
     const store = useHealthStore();
     const statuses: OperationalStatus[] = ['ready', 'unavailable', 'error', 'loading', 'idle'];
     for (const status of statuses) {

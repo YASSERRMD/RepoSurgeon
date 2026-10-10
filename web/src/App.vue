@@ -1,7 +1,23 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
+import { RouterLink } from 'vue-router';
+
 import { useHealthStore } from '@/stores/health';
+import { useOrganizationsStore } from '@/stores/organizations';
 
 const health = useHealthStore();
+const organizations = useOrganizationsStore();
+
+const navLinks = [
+  { to: '/', label: 'Status' },
+  { to: '/organizations', label: 'Organizations' },
+  { to: '/projects', label: 'Projects' },
+];
+
+// The header shows the active organization; resolve its name once on boot.
+onMounted(() => {
+  if (!organizations.loaded) void organizations.load();
+});
 
 const statusLabels: Record<string, string> = {
   ready: 'All systems operational',
@@ -23,6 +39,18 @@ const statusLabels: Record<string, string> = {
         </div>
       </div>
       <div class="header-meta">
+        <nav class="app-nav" aria-label="Primary">
+          <RouterLink v-for="link in navLinks" :key="link.to" :to="link.to" class="nav-link">
+            {{ link.label }}
+          </RouterLink>
+        </nav>
+        <span
+          v-if="organizations.activeOrganization"
+          class="badge badge-active-org"
+          data-testid="active-org"
+        >
+          {{ organizations.activeOrganization.name }}
+        </span>
         <span v-if="health.system" class="badge badge-env">{{ health.system.environment }}</span>
         <span v-if="health.system" class="version">v{{ health.system.version }}</span>
       </div>
@@ -90,6 +118,45 @@ const statusLabels: Record<string, string> = {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-gray-line);
+  border-radius: 999px;
+  padding: 0.15rem;
+}
+
+.nav-link {
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-navy);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  background: var(--color-canvas);
+}
+
+.nav-link.router-link-active {
+  background: var(--color-navy);
+  color: #fff;
+}
+
+.badge-active-org {
+  background: var(--color-navy);
+  color: #fff;
+  border: 1px solid var(--color-navy);
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .version {
@@ -121,6 +188,31 @@ const statusLabels: Record<string, string> = {
   .app-footer {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  /* Stack the header on narrow screens so navigation never overflows. */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .header-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .app-nav {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .app-footer {
+    flex-wrap: wrap;
+    gap: 0.35rem;
   }
 }
 </style>
