@@ -1,0 +1,236 @@
+openapi: 3.1.0
+info:
+  title: RepoSurgeon API
+  version: 0.1.0
+  summary: RepoSurgeon autonomous software engineering workspace
+  description: |
+    RepoSurgeon connects authorized GitHub repositories to an autonomous
+    engineering agent. This document is the contract of record: the server
+    implementation and the generated Vue client must both match it, and CI
+    fails on drift (`npm run gen:client` output must be committed).
+
+    Conventions:
+    - All mutating calls require an `Idempotency-Key` header.
+    - `X-Request-ID` is accepted and echoed on every response.
+    - Cursor pagination uses `{ "items": [...], "next_cursor": "..." }`.
+    - Failures use the canonical `Error` envelope with a stable `code`.
+servers:
+  - url: http://localhost:8081
+    description: Local API (docker compose / make dev)
+  - url: http://localhost:8080
+    description: Same-origin behind the web proxy
+
+paths:
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Liveness probe
+      description: |
+        Returns 200 whenever the process is serving. Liveness never depends on
+        external systems.
+      security: []
+      responses:
+        '200':
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveStatus'
+              example:
+                status: ok
+                uptime_seconds: 12.5
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      description: |
+        Returns 200 only when the database is reachable and no critical
+        migration is pending. Returns 503 with per-check detail otherwise;
+        the response is safe to show to operators and never contains
+        credentials.
+      security: []
+      responses:
+        '200':
+          description: Service is ready to accept traffic.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessReport'
+              example:
+                status: ready
+                checks:
+                  - name: database
+                    status: up
+                    duration_ms: 2
+                  - name: migrations
+                    status: up
+                    detail: ''
+                    duration_ms: 3
+                generated_at: '2026-10-10T10:00:00Z'
+        '503':
+          description: Service is not ready. Each failing check explains the remediation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessReport'
+              example:
+                status: unavailable
+                checks:
+                  - name: database
+                    status: down
+                    detail: database unreachable; verify PostgreSQL is running and RS_DATABASE_URL is correct
+                    duration_ms: 5000
+                generated_at: '2026-10-10T10:00:00Z'
+
+  /api/v1/system/info:
+    get:
+      operationId: getSystemInfo
+      summary: Running service metadata
+      description: |
+        Build and environment facts for the UI footer and diagnostics. Contains
+        no configuration secrets.
+      security: []
+      responses:
+        '200':
+          description: Service metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfo'
+              example:
+                name: reposurgeon
+                version: 0.1.0
+                git_commit: 9a1aecc
+                build_time: '2026-10-10T10:00:00Z'
+                environment: development
+                go_version: go1.25.5
+                started_at: '2026-10-10T09:59:00Z'
+                uptime_seconds: 60
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  schemas:
+    LiveStatus:
+      type: object
+      required: [status, uptime_seconds]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Always `ok` when the process is alive.
+        uptime_seconds:
+          type: number
+          description: Seconds since the process started.
+
+    ReadinessReport:
+      type: object
+      required: [status, checks, generated_at]
+      properties:
+        status:
+          type: string
+          enum: [ready, unavailable]
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthCheck'
+        generated_at:
+          type: string
+          format: date-time
+
+    HealthCheck:
+      type: object
+      required: [name, status, duration_ms]
+      properties:
+        name:
+          type: string
+          description: Dependency name, for example `database` or `migrations`.
+        status:
+          type: string
+          enum: [up, down]
+        detail:
+          type: string
+          description: Operator-facing remediation text when status is `down`.
+        duration_ms:
+          type: integer
+          description: Evaluation duration in milliseconds.
+
+    SystemInfo:
+      type: object
+      required: [name, version, git_commit, environment, go_version, started_at, uptime_seconds]
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        git_commit:
+          type: string
+        build_time:
+          type: string
+        environment:
+          type: string
+          enum: [development, test, production]
+        go_version:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        uptime_seconds:
+          type: number
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+            message:
+              type: string
+            request_id:
+              type: string
+              description: Correlation ID echoed from the X-Request-ID header.
+            details:
+              type: object
+              additionalProperties: true
+              description: Optional structured detail for client-correctable errors.
+
+  responses:
+    InternalError:
+      description: Unexpected server failure. The body never contains internal detail.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: internal_error
+              message: internal server error
+              request_id: req_0123456789abcdef
+
+  parameters:
+    RequestID:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Correlation ID; echoed on the response and in server logs.
+      schema:
+        type: string
+        maxLength: 128
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Required for create/run/PR operations. Repeating a request with the
+        same key returns the original result instead of duplicating effects.
+      schema:
+        type: string
+        maxLength: 128

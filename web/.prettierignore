@@ -1,0 +1,6 @@
+dist
+coverage
+node_modules
+*.local
+.DS_Store
+src/api/generated

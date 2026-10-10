@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Commit message gate enforces the project's rules:
+#   * one milestone prefix per commit: mNN: <imperative summary>
+#   * no AI/bot co-author or attribution trailers
+set -euo pipefail
+
+message_file="$1"
+message="$(cat "$message_file")"
+subject="$(printf '%s\n' "$message" | sed '/^$/q')"
+
+status=0
+fail() { echo "commit-msg: $*" >&2; status=1; }
+
+if ! printf '%s\n' "$subject" | grep -Eq '^m[0-9]{2}(\([a-z0-9-]+\))?: .{10,}$'; then
+  fail "subject must look like 'm00: implement health probes' (milestone prefix required)"
+fi
+
+if printf '%s\n' "$message" | grep -Eiq '^(co-authored-by|generated-by|assisted-by|signed-off-by|ai-authored-by):'; then
+  fail "AI/bot co-author and similar trailers are forbidden in commit messages"
+fi
+
+if printf '%s\n' "$message" | grep -Eiq '(claude|codex|copilot|openai|anthropic|gpt-)'; then
+  fail "commit messages must not reference AI tools"
+fi
+
+if [ $(( $(printf '%s\n' "$subject" | wc -c) )) -gt 100 ]; then
+  fail "subject line is too long (max 100 characters)"
+fi
+
+exit "$status"
