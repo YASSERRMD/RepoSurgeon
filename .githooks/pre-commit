@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Pre-commit gate: keep secrets, unformatted code and large binaries out of
+# history. Fast checks only — the full pipeline runs in CI and via `make check`.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+status=0
+fail() { echo "pre-commit: $*" >&2; status=1; }
+
+# 1. Refuse credential material in staged content.
+staged_files="$(git diff --cached --name-only --diff-filter=ACM)"
+if [ -n "$staged_files" ]; then
+  secret_pattern='(gh[opsu]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})'
+  while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    if git show ":$file" 2>/dev/null | grep -Eq "$secret_pattern"; then
+      fail "possible secret in $file; remove it before committing"
+    fi
+  done <<<"$staged_files"
+fi
+
+# 2. Go sources must be gofmt-clean.
+if command -v gofmt >/dev/null 2>&1; then
+  unformatted="$(gofmt -l $(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true) 2>/dev/null || true)"
+  if [ -n "$unformatted" ]; then
+    fail "gofmt required for: $unformatted"
+  fi
+fi
+
+# 3. Reject accidental binaries/artifacts.
+while IFS= read -r file; do
+  case "$file" in
+    node_modules/*|web/dist/*|workspaces/*|*.png|*.jpg|*.zip|*.tar.gz) fail "artifact must not be committed: $file" ;;
+  esac
+done <<<"$staged_files"
+
+# 4. .env files are never allowed into commits; the template IS tracked.
+while IFS= read -r file; do
+  case "$file" in
+    .env|.env.*) fail "environment files must not be committed: $file" ;;
+  esac
+done < <(printf '%s\n' "$staged_files" | grep -v '^\.env\.example$')
+
+if [ "$status" -ne 0 ]; then
+  echo "pre-commit: fix the issues above (or use --no-verify only for a conscious reason)." >&2
+fi
+exit "$status"
