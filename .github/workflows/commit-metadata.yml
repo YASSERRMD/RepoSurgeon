@@ -1,0 +1,40 @@
+name: commit-metadata
+
+on:
+  push:
+    branches: [main, 'milestone/**']
+  pull_request:
+    branches: [main]
+
+# Enforces the Git identity and no-AI-attribution rules from
+# docs/specification/GIT_WORKFLOW.md on every source commit.
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine commit range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="$(git rev-parse HEAD~1 2>/dev/null || echo '')"
+          fi
+          if [ -n "$base" ] && git rev-parse --verify "$base" >/dev/null 2>&1; then
+            echo "base=$base" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify author, committer and trailers
+        run: |
+          if [ -z "${{ steps.range.outputs.base }}" ]; then
+            echo "No comparable base found; running against HEAD only."
+            bash scripts/ci/verify-commit-metadata.sh HEAD HEAD
+          else
+            bash scripts/ci/verify-commit-metadata.sh "${{ steps.range.outputs.base }}" HEAD
+          fi
