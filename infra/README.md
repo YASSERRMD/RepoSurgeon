@@ -47,9 +47,13 @@ secret is missing; the process exits with the exact variable name.
 
 ## Known limitations (M00)
 
-- The runner enforces process-level confinement. Namespace-based default-deny
-  egress (network namespaces, seccomp profile) is added with M07 on the Linux
-  runner image; compose-level `internal: true` networking already removes
-  egress for the container.
+- The runner enforces process-level confinement: non-root, allowlisted
+  programs, confined workspace, bounded output/runtime, no credentials.
+  Namespace-based default-deny egress (network namespace + seccomp profile)
+  is added with M07 on the Linux runner image. The runner already has no
+  network path to PostgreSQL or the API/worker.
 - Compose pins resource quotas but not cgroup v2 delegation; production
   deployments set the equivalent cgroup limits explicitly.
+- Docker networks marked `internal: true` also block host access to published
+  ports, so the runner network is not marked internal; the isolation
+  properties above are enforced per-service instead.

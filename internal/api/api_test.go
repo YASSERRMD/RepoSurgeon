@@ -125,6 +125,63 @@ func TestHealthReadyWhenCriticalMigrationPending(t *testing.T) {
 	}
 }
 
+// fakeDirectory fails every resolution: if the subject middleware wrapped the
+// health routes, provisioning would fail and readiness would become 401.
+type fakeDirectory struct{}
+
+func (fakeDirectory) ProvisionUser(context.Context, string) (string, error) {
+	return "", errors.New("directory unavailable")
+}
+
+func (fakeDirectory) FirstOrganization(context.Context, string) (string, error) {
+	return "", errors.New("directory unavailable")
+}
+
+func (fakeDirectory) Membership(context.Context, string, string) (string, error) {
+	return "", errors.New("directory unavailable")
+}
+
+func TestHealthRoutesBypassSubjectMiddleware(t *testing.T) {
+	// Production configuration deliberately disables the development subject
+	// resolver, yet liveness and readiness must keep answering so the outage
+	// is reported as 503 rather than 401.
+	cfg := &config.Config{Process: config.ProcessAPI, Env: config.EnvProduction, HTTPAddr: ":8080"}
+	srv, err := NewServer(Options{
+		Config: cfg,
+		DB:     pingDB{err: errors.New("database unreachable")},
+		PendingMigrations: func(context.Context) ([]migrations.Migration, error) {
+			return nil, nil
+		},
+		SubjectDirectory: fakeDirectory{},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	handler := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health/live", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("liveness status = %d, want 200 (health routes must not require a subject)", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readiness status = %d, want 503", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "unavailable") {
+		t.Fatalf("readiness body = %s", rec.Body.String())
+	}
+
+	// The authenticated surface still rejects the caller in production.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/organizations", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("api status = %d, want 401 in production", rec.Code)
+	}
+}
+
 func TestSystemInfo(t *testing.T) {
 	_, handler := newTestServer(t, nil, nil, nil)
 	rec := httptest.NewRecorder()

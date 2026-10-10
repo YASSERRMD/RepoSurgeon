@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
@@ -92,16 +93,21 @@ func NewServer(opts Options) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	router := NewRouter()
 	s.registerRoutes(router)
-	var h http.Handler = router
-	// M01 routes sit behind the subject middleware so every handler can rely
-	// on an authenticated, organization-verified caller.
-	if s.directory != nil {
-		h = subjectMiddleware(devSubjectResolver{
-			env:       s.cfg.Env,
-			directory: s.directory,
-			log:       s.log,
-		}, h)
-	}
+	// The subject middleware wraps only the authenticated API surface. Health
+	// and system-info routes must keep working while the database is down —
+	// readiness is exactly what reports that outage — so they never depend on
+	// provisioning a caller.
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/") && s.directory != nil {
+			subjectMiddleware(devSubjectResolver{
+				env:       s.cfg.Env,
+				directory: s.directory,
+				log:       s.log,
+			}, router).ServeHTTP(w, r)
+			return
+		}
+		router.ServeHTTP(w, r)
+	})
 	h = corsMiddleware(s.cfg.CORSAllowedOrigins, h)
 	h = securityHeadersMiddleware(h)
 	h = recoverMiddleware(s.log, h)

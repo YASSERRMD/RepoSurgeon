@@ -69,6 +69,7 @@ Negative / costs:
 - `internal/runner` tests prove allowlist enforcement, workspace confinement,
   path and symlink escape rejection, root refusal, bounded output/timeouts and
   per-operation idempotency.
-- `scripts/smoke-compose.sh` starts the runner on an internal (no-egress)
-  network with dropped capabilities, a read-only root filesystem and resource
-  quotas.
+- `scripts/smoke-compose.sh` starts the runner with dropped capabilities, a
+  read-only root filesystem, resource quotas, a dedicated network with no
+  access to PostgreSQL or the API, and then executes an allowlisted command
+  through ``POST /v1/exec``.
