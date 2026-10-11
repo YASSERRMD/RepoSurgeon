@@ -116,6 +116,15 @@ type Config struct {
 	DefaultModelID string
 	// ReasoningEffort is the default deliberation level for new requests.
 	ReasoningEffort string
+
+	// GitHubAppID is the GitHub App id; empty disables the GitHub integration.
+	GitHubAppID string
+	// GitHubAppKeyPath points at the App private key PEM file.
+	GitHubAppKeyPath string
+	// GitHubAPIBaseURL overrides the GitHub API base for tests.
+	GitHubAPIBaseURL string
+	// GitHubWebhookSecret verifies webhook signatures; it is a secret.
+	GitHubWebhookSecret string
 }
 
 // ModelConfig is the model-provider slice of the configuration.
@@ -264,6 +273,10 @@ func loadCommon(lookup func(string) (string, bool), opts LoadOptions) (*Config, 
 	cfg.StepFunBaseURL = firstNonEmpty(get("STEPFUN_BASE_URL"), "https://api.stepfun.ai/v1")
 	cfg.DefaultModelID = firstNonEmpty(get("DEFAULT_MODEL_ID"), "step-5-preview")
 	cfg.ReasoningEffort = firstNonEmpty(get("DEFAULT_REASONING_EFFORT"), "medium")
+	cfg.GitHubAppID = get("GITHUB_APP_ID")
+	cfg.GitHubAppKeyPath = get("GITHUB_APP_PRIVATE_KEY_PATH")
+	cfg.GitHubAPIBaseURL = firstNonEmpty(get("GITHUB_API_BASE_URL"), "https://api.github.com")
+	cfg.GitHubWebhookSecret = get("GITHUB_WEBHOOK_SECRET")
 	if cfg.CredentialKEK == "" && opts.RequireCredentialKey && !env.IsTest() {
 		require("RS_CREDENTIAL_KEK")
 	}

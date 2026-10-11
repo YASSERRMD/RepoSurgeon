@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -100,6 +102,26 @@ func run() error {
 			"key_configured", cfg.StepFunAPIKey != "")
 	}
 
+	// M04: GitHub adapter and webhook verifier are optional; both require
+	// configuration that is unavailable in development by default.
+	var githubApp *api.GitHubServices
+	if built := api.NewGitHubServices(api.GitHubServicesConfig{
+		Installations: store.NewGitHubInstallations(pool),
+		Deliveries:    store.NewWebhookDeliveries(pool),
+		Issues:        store.NewIssues(pool),
+		Projects:      store.NewProjects(pool),
+		AppID:         githubAppID(cfg),
+		PrivateKeyPEM: githubPrivateKey(cfg),
+		APIBaseURL:    cfg.GitHubAPIBaseURL,
+		WebhookSecret: cfg.GitHubWebhookSecret,
+	}); built != nil && built.Configured() {
+		githubApp = built
+		logger.Info("github integration configured",
+			"app_id", githubAppID(cfg), "api_base_url", cfg.GitHubAPIBaseURL)
+	} else {
+		logger.Info("github integration disabled (app credentials or webhook secret absent)")
+	}
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -118,6 +140,7 @@ func run() error {
 		}),
 		Encryptor: encryptor,
 		Gateway:   gateway,
+		GitHubApp: githubApp,
 		Logger:    logger,
 		Version:   version,
 		GitCommit: gitCommit,
@@ -191,4 +214,28 @@ func credentialKeyVersion(encryptor *secrets.Encryptor) int {
 		return 0
 	}
 	return encryptor.KeyVersion()
+}
+
+// githubAppID reads the configured GitHub App id, or 0 when unset.
+func githubAppID(cfg *config.Config) int64 {
+	if strings.TrimSpace(cfg.GitHubAppID) == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(cfg.GitHubAppID), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+// githubPrivateKey loads the App private key from its configured path.
+func githubPrivateKey(cfg *config.Config) []byte {
+	if strings.TrimSpace(cfg.GitHubAppKeyPath) == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(strings.TrimSpace(cfg.GitHubAppKeyPath))
+	if err != nil {
+		return nil
+	}
+	return raw
 }
