@@ -544,6 +544,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's runs */
+        get: operations["listRuns"];
+        put?: never;
+        /**
+         * Create a durable run and enqueue its task
+         * @description Creates the run in the `queued` state and enqueues exactly one task.
+         *     A repeated request with the same Idempotency-Key returns the original
+         *     run instead of creating a second one.
+         */
+        post: operations["createRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get a run with its durable state history */
+        get: operations["getRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a queued run into the pipeline */
+        post: operations["startRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a run */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -827,6 +907,64 @@ export interface components {
             path: string;
             is_dir: boolean;
             size: number;
+        };
+        RunCreate: {
+            project_id: string;
+            issue_id?: string;
+            base_sha?: string;
+            model?: {
+                provider?: string;
+                id?: string;
+                /** @enum {string} */
+                reasoning_effort?: "low" | "medium" | "high";
+            };
+            limits?: {
+                max_steps?: number;
+                max_duration_seconds?: number;
+                max_usd?: number;
+            };
+            policy?: {
+                external_pr_allowed?: boolean;
+                merge_requires_approval?: boolean;
+            };
+        };
+        Run: {
+            id: string;
+            organization_id: string;
+            project_id: string;
+            issue_id?: string;
+            /** @enum {string} */
+            state: "queued" | "intaking" | "analyzing" | "planning" | "awaiting_approval" | "editing" | "testing" | "reviewing" | "pr_ready" | "pr_open" | "completed" | "failed" | "canceled" | "blocked";
+            base_sha?: string;
+            attempt: number;
+            model_config?: {
+                [key: string]: unknown;
+            };
+            limits?: {
+                [key: string]: unknown;
+            };
+            policy?: {
+                [key: string]: unknown;
+            };
+            created_by?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+        };
+        RunStateChange: {
+            id: string;
+            from_state?: string;
+            to_state: string;
+            reason?: string;
+            /** @enum {string} */
+            actor_type: "system" | "user" | "worker" | "model";
+            /** Format: date-time */
+            created_at: string;
         };
         Error: {
             error: {
@@ -2399,6 +2537,205 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listRuns: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description Opaque pagination cursor from a previous `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runs, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Run"][];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "project_id": "prj_7h2k9m4q8w3e6r1t5y0u2i4o6p",
+                 *       "issue_id": "iss_9p0o8i7u6y5t4r3e2w1q",
+                 *       "base_sha": "9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012",
+                 *       "model": {
+                 *         "provider": "stepfun",
+                 *         "id": "step-5-preview",
+                 *         "reasoning_effort": "high"
+                 *       },
+                 *       "limits": {
+                 *         "max_steps": 60,
+                 *         "max_duration_seconds": 3600,
+                 *         "max_usd": 10
+                 *       },
+                 *       "policy": {
+                 *         "external_pr_allowed": true,
+                 *         "merge_requires_approval": true
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Run created and task enqueued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run detail including every recorded transition. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"] & {
+                        history?: components["schemas"]["RunStateChange"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run accepted for execution. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description Run is not queued. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "state_conflict",
+                     *         "message": "run is not queued; current state is editing",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run canceled. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @enum {string} */
+                        state: "canceled";
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

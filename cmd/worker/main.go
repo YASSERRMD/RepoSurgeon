@@ -1,4 +1,4 @@
-// Command worker runs the RepoSurgeon background supervisor.
+// Command worker runs the RepoSurgeon durable orchestration loop.
 package main
 
 import (
@@ -8,11 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/YASSERRMD/RepoSurgeon/internal/agent"
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
+	"github.com/YASSERRMD/RepoSurgeon/internal/queue"
+	"github.com/YASSERRMD/RepoSurgeon/internal/runner"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
 	"github.com/YASSERRMD/RepoSurgeon/internal/worker"
 )
@@ -40,14 +45,6 @@ func run() error {
 	}
 	defer pool.Close()
 
-	sup := &worker.Supervisor{
-		DB: pool,
-		PendingMigrations: func(ctx context.Context) ([]migrations.Migration, error) {
-			return migrations.Pending(ctx, pool, cfg.MigrationsDir)
-		},
-		Logger: logger,
-	}
-	// Fail fast when the schema is behind instead of looping on stale state.
 	pending, err := migrations.Pending(ctx, pool, cfg.MigrationsDir)
 	if err != nil {
 		return err
@@ -58,9 +55,40 @@ func run() error {
 		}
 	}
 
+	q := queue.New(pool)
+	runs := store.NewRuns(pool)
+
+	// M06 has no agent steps yet; the handler records the durable facts and
+	// completes. Later milestones replace it with the real pipeline.
+	handler := worker.StepHandlerFunc(func(_ context.Context, task queue.Task, heartbeat func() error) error {
+		if err := heartbeat(); err != nil {
+			return err
+		}
+		logger.Info("task executed", "task", task.ID, "kind", task.Kind, "run", task.RunID)
+		return nil
+	})
+
+	workerCfg := worker.DefaultConfig()
+	workerCfg.Name, _ = os.Hostname()
+	if workerCfg.Name == "" {
+		workerCfg.Name = "worker"
+	}
+	if lease := envSeconds("RS_WORKER_LEASE_SECONDS"); lease > 0 {
+		workerCfg.Lease = lease
+	}
+	if kinds := strings.TrimSpace(os.Getenv("RS_WORKER_KINDS")); kinds != "" {
+		workerCfg.Kinds = strings.Split(kinds, ",")
+	}
+
+	orch, err := worker.New(workerCfg, q, &runStoreAdapter{runs: runs}, handler, logger)
+	if err != nil {
+		return err
+	}
+
+	// Liveness stays independent of the loop; readiness reports the loop state.
 	httpServer := &http.Server{
 		Addr:              cfg.WorkerAddr,
-		Handler:           worker.HealthHandler(sup),
+		Handler:           worker.HealthHandler(&worker.Supervisor{Worker: orch}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)
@@ -74,8 +102,8 @@ func run() error {
 	}()
 
 	go func() {
-		if err := sup.Run(ctx); err != nil {
-			logger.Error("supervisor stopped", "err", err)
+		if err := orch.Run(ctx); err != nil {
+			logger.Error("orchestration loop stopped", "err", err)
 			stop()
 		}
 	}()
@@ -93,6 +121,43 @@ func run() error {
 		return <-errCh
 	}
 }
+
+// runStoreAdapter adapts the run repository to the worker's interface.
+type runStoreAdapter struct {
+	runs *store.Runs
+}
+
+func (a *runStoreAdapter) Get(ctx context.Context, organizationID, runID string) (worker.RunView, error) {
+	run, err := a.runs.Get(ctx, organizationID, runID)
+	if err != nil {
+		return worker.RunView{}, err
+	}
+	return worker.RunView{ID: run.ID, OrganizationID: run.OrganizationID, ProjectID: run.ProjectID, State: run.State}, nil
+}
+
+func (a *runStoreAdapter) Transition(ctx context.Context, organizationID, runID, toState, reason, actorType string) (worker.RunView, error) {
+	run, err := a.runs.Transition(ctx, organizationID, runID, toState, reason, actorType)
+	if err != nil {
+		return worker.RunView{}, err
+	}
+	return worker.RunView{ID: run.ID, OrganizationID: run.OrganizationID, ProjectID: run.ProjectID, State: run.State}, nil
+}
+
+func envSeconds(name string) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return 0
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// agentUnused keeps the import honest until run tasks drive real steps.
+var _ = agent.StateQueued
+var _ = runner.NewServer
 
 func newLogger(cfg *config.Config) *slog.Logger {
 	level := slog.LevelInfo

@@ -19,6 +19,7 @@ import (
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
 	"github.com/YASSERRMD/RepoSurgeon/internal/gitworkspace"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
+	"github.com/YASSERRMD/RepoSurgeon/internal/queue"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
 )
@@ -129,6 +130,10 @@ func run() error {
 		return fmt.Errorf("workspace manager: %w", err)
 	}
 
+	// M06: durable run state machine and task queue.
+	runsRepo := store.NewRuns(pool)
+	taskQueue := queue.New(pool)
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -149,6 +154,8 @@ func run() error {
 		Gateway:    gateway,
 		GitHubApp:  githubApp,
 		Workspaces: workspaces,
+		Runs:       runsRepo,
+		Queue:      taskQueue,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

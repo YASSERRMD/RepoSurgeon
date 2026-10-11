@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.6.0
+  version: 0.7.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -52,6 +52,8 @@ tags:
     description: GitHub webhook intake
   - name: workspaces
     description: Pinned checkouts and worktrees
+  - name: runs
+    description: Durable agent runs
 
 paths:
   /health/live:
@@ -1225,6 +1227,194 @@ paths:
           $ref: '#/components/responses/NotFound'
 
 
+  /api/v1/runs:
+    post:
+      operationId: createRun
+      summary: Create a durable run and enqueue its task
+      description: |
+        Creates the run in the `queued` state and enqueues exactly one task.
+        A repeated request with the same Idempotency-Key returns the original
+        run instead of creating a second one.
+      tags: [runs]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCreate'
+            example:
+              project_id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+              issue_id: iss_9p0o8i7u6y5t4r3e2w1q
+              base_sha: 9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012
+              model:
+                provider: stepfun
+                id: step-5-preview
+                reasoning_effort: high
+              limits:
+                max_steps: 60
+                max_duration_seconds: 3600
+                max_usd: 10.0
+              policy:
+                external_pr_allowed: true
+                merge_requires_approval: true
+      responses:
+        '201':
+          description: Run created and task enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: listRuns
+      summary: List a project's runs
+      tags: [runs]
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Runs, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                  next_cursor:
+                    type: [string, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/runs/{run_id}:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRun
+      summary: Get a run with its durable state history
+      tags: [runs]
+      responses:
+        '200':
+          description: Run detail including every recorded transition.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Run'
+                  - type: object
+                    properties:
+                      history:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RunStateChange'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/start:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: startRun
+      summary: Move a queued run into the pipeline
+      tags: [runs]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '202':
+          description: Run accepted for execution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Run is not queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: state_conflict
+                  message: run is not queued; current state is editing
+                  request_id: req_0123456789abcdef
+
+  /api/v1/runs/{run_id}/cancel:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: cancelRun
+      summary: Cancel a run
+      tags: [runs]
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '202':
+          description: Run canceled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, state]
+                properties:
+                  id:
+                    type: string
+                  state:
+                    type: string
+                    enum: [canceled]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+
 components:
   schemas:
     LiveStatus:
@@ -1841,6 +2031,106 @@ components:
           type: boolean
         size:
           type: integer
+
+    RunCreate:
+      type: object
+      required: [project_id]
+      properties:
+        project_id:
+          type: string
+        issue_id:
+          type: string
+        base_sha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+        model:
+          type: object
+          properties:
+            provider:
+              type: string
+            id:
+              type: string
+            reasoning_effort:
+              type: string
+              enum: [low, medium, high]
+        limits:
+          type: object
+          properties:
+            max_steps:
+              type: integer
+            max_duration_seconds:
+              type: integer
+            max_usd:
+              type: number
+        policy:
+          type: object
+          properties:
+            external_pr_allowed:
+              type: boolean
+            merge_requires_approval:
+              type: boolean
+
+    Run:
+      type: object
+      required: [id, organization_id, project_id, state, attempt, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        project_id:
+          type: string
+        issue_id:
+          type: string
+        state:
+          type: string
+          enum: [queued, intaking, analyzing, planning, awaiting_approval, editing, testing, reviewing, pr_ready, pr_open, completed, failed, canceled, blocked]
+        base_sha:
+          type: string
+        attempt:
+          type: integer
+        model_config:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
+        policy:
+          type: object
+          additionalProperties: true
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        finished_at:
+          type: [string, 'null']
+          format: date-time
+
+    RunStateChange:
+      type: object
+      required: [id, to_state, actor_type, created_at]
+      properties:
+        id:
+          type: string
+        from_state:
+          type: string
+        to_state:
+          type: string
+        reason:
+          type: string
+        actor_type:
+          type: string
+          enum: [system, user, worker, model]
+        created_at:
+          type: string
+          format: date-time
 
     Error:
       type: object

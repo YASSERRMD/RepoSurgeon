@@ -12,7 +12,7 @@ CREATE TABLE runs (
                          CHECK (state IN ('queued', 'intaking', 'analyzing', 'planning',
                                           'awaiting_approval', 'editing', 'testing',
                                           'reviewing', 'pr_ready', 'pr_open',
-                                          'completed', 'failed', 'cancelled', 'blocked')),
+                                          'completed', 'failed', 'canceled', 'blocked')),
     base_sha         text,
     model_config     jsonb NOT NULL DEFAULT '{}'::jsonb,
     limits           jsonb NOT NULL DEFAULT '{}'::jsonb,
