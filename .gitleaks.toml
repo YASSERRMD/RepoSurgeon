@@ -1,8 +1,7 @@
 title = "RepoSurgeon gitleaks configuration"
 
-# Extend the default rule set; this file only narrows one known
-# false-positive source that contains deliberately non-secret credential
-# material.
+# Extend the default rule set; this file only narrows known false-positive
+# sources that contain deliberately non-secret credential material.
 [extend]
 useDefault = true
 
@@ -10,4 +9,16 @@ useDefault = true
 description = "Deliberately fake credential fixtures in redaction unit tests"
 paths = [
     '''internal/redact/redact_test\.go$''',
+]
+
+[[allowlists]]
+description = "CI credential key handling in the compose smoke workflow; values are generated at run time with openssl and never stored in the repository"
+paths = [
+    '''\.github/workflows/compose-smoke\.yml$''',
+]
+
+[[allowlists]]
+description = "Test fixtures for HTTP header assertions in the web client tests; the header values are fixed test strings, not credentials"
+paths = [
+    '''web/src/api/client\.test\.ts$''',
 ]

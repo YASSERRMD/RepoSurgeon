@@ -57,7 +57,10 @@ func newTestExecutor(t *testing.T, grant []string) (*Executor, string) {
 		t.Fatalf("write env: %v", err)
 	}
 	catalog := NewCatalog()
-	executor := NewExecutor(catalog, NewPolicy(catalog), worktree, grant)
+	executor, err := NewExecutor(catalog, NewPolicy(catalog), worktree, grant)
+	if err != nil {
+		t.Fatalf("NewExecutor: %v", err)
+	}
 	return executor, worktree
 }
 

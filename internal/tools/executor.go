@@ -16,10 +16,14 @@ import (
 // Executor executes authorized tool calls inside a workspace. It is the only
 // component allowed to touch the filesystem on the worker's behalf, and it
 // refuses anything outside the catalog or outside the workspace root.
+//
+// Every file operation goes through root, an *os.Root opened on the worktree,
+// so no path (including symlinks) can escape the workspace by construction.
 type Executor struct {
 	catalog  *Catalog
 	policy   *Policy
 	worktree string
+	root     *os.Root
 	// Runner executes sandboxed commands. It may be nil for read-only tools.
 	Runner CommandRunner
 	// Grant is the caller's permission set for the active organization.
@@ -47,9 +51,14 @@ type Approver interface {
 	RequestApproval(ctx context.Context, action, reason string) (approved bool, err error)
 }
 
-// NewExecutor builds an executor for one workspace.
-func NewExecutor(catalog *Catalog, policy *Policy, worktree string, grant []string) *Executor {
-	return &Executor{catalog: catalog, policy: policy, worktree: worktree, Grant: grant}
+// NewExecutor builds an executor for one workspace. The worktree is opened as
+// a filesystem root so every later access is confined to it.
+func NewExecutor(catalog *Catalog, policy *Policy, worktree string, grant []string) (*Executor, error) {
+	root, err := os.OpenRoot(worktree)
+	if err != nil {
+		return nil, fmt.Errorf("tools: open workspace root: %w", err)
+	}
+	return &Executor{catalog: catalog, policy: policy, worktree: worktree, root: root, Grant: grant}, nil
 }
 
 // Execute runs one tool call after the policy allows it.
@@ -104,7 +113,8 @@ func (e *Executor) dispatch(ctx context.Context, def Definition, call model.Tool
 }
 
 // safePath canonicalises a repository-relative path and refuses escapes,
-// hidden paths and credential files.
+// hidden paths and credential files. The returned path is relative to the
+// workspace root and is only ever used through the executor's os.Root.
 func (e *Executor) safePath(rel string) (string, error) {
 	trimmed := strings.TrimSpace(rel)
 	if trimmed == "" {
@@ -113,22 +123,11 @@ func (e *Executor) safePath(rel string) (string, error) {
 	if len(trimmed) > 1024 || strings.ContainsRune(trimmed, 0) {
 		return "", errors.New("tools: path is invalid")
 	}
-	if strings.HasPrefix(trimmed, "/") || strings.Contains(trimmed, "..") {
+	if strings.HasPrefix(trimmed, "/") || strings.Contains(trimmed, `\`) || strings.Contains(trimmed, "..") {
 		return "", fmt.Errorf("tools: path %q escapes the workspace", rel)
 	}
-	joined := filepath.Join(e.worktree, filepath.Clean("/"+trimmed))
-	// Resolve symlinks on the deepest existing ancestor so a link inside the
-	// workspace cannot point outside it.
-	if resolved, err := filepath.EvalSymlinks(joined); err == nil {
-		joined = resolved
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("tools: path %q cannot be resolved", rel)
-	}
-	root, err := filepath.EvalSymlinks(e.worktree)
-	if err != nil {
-		root = e.worktree
-	}
-	if !strings.HasPrefix(joined, root+string(filepath.Separator)) && joined != root {
+	cleaned := filepath.Clean(trimmed)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", fmt.Errorf("tools: path %q escapes the workspace", rel)
 	}
 	// Deny hidden paths and credential material.
@@ -143,7 +142,7 @@ func (e *Executor) safePath(rel string) (string, error) {
 			return "", fmt.Errorf("tools: path %q looks like credential material and cannot be read", rel)
 		}
 	}
-	return joined, nil
+	return cleaned, nil
 }
 
 func (e *Executor) fileRead(ctx context.Context, call model.ToolCall) (string, error) {
@@ -157,7 +156,7 @@ func (e *Executor) fileRead(ctx context.Context, call model.ToolCall) (string, e
 	if err != nil {
 		return "", err
 	}
-	info, err := statPath(ctx, path)
+	info, err := statPath(ctx, e.root, path)
 	if err != nil {
 		return "", err
 	}
@@ -167,7 +166,7 @@ func (e *Executor) fileRead(ctx context.Context, call model.ToolCall) (string, e
 	if info.Size() > maxFileBytes {
 		return "", fmt.Errorf("tools: %s exceeds the %d byte read limit", args.Path, maxFileBytes)
 	}
-	data, err := readFile(ctx, path)
+	data, err := readFile(ctx, e.root, path)
 	if err != nil {
 		return "", err
 	}
@@ -191,7 +190,7 @@ func (e *Executor) fileSearch(_ context.Context, call model.ToolCall) (string, e
 		if err != nil {
 			return "", err
 		}
-		root = safe
+		root = filepath.Join(e.worktree, safe)
 	}
 	matches, err := searchFiles(root, args.Pattern, maxSearchMatches)
 	if err != nil {
@@ -215,7 +214,7 @@ func (e *Executor) listTree(_ context.Context, call model.ToolCall) (string, err
 		if err != nil {
 			return "", err
 		}
-		root = safe
+		root = filepath.Join(e.worktree, safe)
 	}
 	entries, err := gitworkspace.ListFiles(root)
 	if err != nil {
