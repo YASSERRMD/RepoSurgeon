@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
+	"github.com/YASSERRMD/RepoSurgeon/internal/domain"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
 	"github.com/YASSERRMD/RepoSurgeon/internal/model"
 )
@@ -49,7 +50,7 @@ func newGatewayHarness(t *testing.T, provider model.Provider, key string) (m02Ha
 func (h m02Harness) harnessServices() *Services {
 	return &Services{
 		Organizations: fakeOrgs{},
-		Projects:      &fakeProjects{},
+		Projects:      &fakeProjects{getResult: domain.Project{ID: "prj_1", OrganizationID: "org_1"}},
 		Audit:         h.audit,
 		Idempotency:   newFakeIdempotency(),
 	}

@@ -92,8 +92,19 @@ func (f *fakeProjects) Create(_ context.Context, _ domain.Project, _ string) err
 	return f.createErr
 }
 
-func (f *fakeProjects) GetForOrg(_ context.Context, _, _ string) (domain.Project, error) {
-	return f.getResult, f.getErr
+func (f *fakeProjects) GetForOrg(_ context.Context, organizationID, projectID string) (domain.Project, error) {
+	if f.getErr != nil {
+		return domain.Project{}, f.getErr
+	}
+	// Unknown organizations and unknown project ids are both not found, so
+	// handlers that scope by project cannot be tested with a blanket stub.
+	if organizationID != "" && f.getResult.OrganizationID != "" && organizationID != f.getResult.OrganizationID {
+		return domain.Project{}, domain.ErrNotFound
+	}
+	if projectID != "" && f.getResult.ID != "" && projectID != f.getResult.ID {
+		return domain.Project{}, domain.ErrNotFound
+	}
+	return f.getResult, nil
 }
 
 func (f *fakeProjects) ListForOrg(_ context.Context, _, _ string, _ int, _ string) (domain.Page[domain.Project], error) {
