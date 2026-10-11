@@ -25,7 +25,7 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | M01 — Domain model, persistence, project isolation | merged, branch deleted | PR https://github.com/YASSERRMD/RepoSurgeon/pull/2 | recorded in M02 report | `docs/milestone-reports/M01.md` |
 | M02 — Authentication, authorization, secure credentials | merged, branch deleted | PR #3 | `7978b22d7bc214f4c6478fb066e9b4a1ad7672b0` | `docs/milestone-reports/M02.md` |
 | M03 — Step 5 Preview model gateway and tool calling | merged, branch deleted | PR #4 | `fa289c869c48a56065cdd9a697d6809e71b11519` | `docs/milestone-reports/M03.md` |
-| M04 — GitHub integration, repository registration, issue sync | `milestone/m04-github-integration-repository-registration-and-issue-sync` | in progress | — | — | — |
+| M04 — GitHub integration, repo registration, issue sync | merged, branch deleted | PR #5 | recorded in M05 report | `docs/milestone-reports/M04.md` |
 | … M19 | — | not started | — | — | — |
 
 ## Log
