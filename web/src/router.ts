@@ -1,5 +1,6 @@
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 
+import ApprovalsView from '@/views/ApprovalsView.vue';
 import CredentialsView from '@/views/CredentialsView.vue';
 import HomeView from '@/views/HomeView.vue';
 import LoginView from '@/views/LoginView.vue';
@@ -7,6 +8,7 @@ import MembersView from '@/views/MembersView.vue';
 import OrganizationsView from '@/views/OrganizationsView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
+import ToolsView from '@/views/ToolsView.vue';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -44,6 +46,18 @@ export const routes: RouteRecordRaw[] = [
     name: 'credentials',
     component: CredentialsView,
     meta: { title: 'Credentials', requiresAuth: true },
+  },
+  {
+    path: '/approvals',
+    name: 'approvals',
+    component: ApprovalsView,
+    meta: { title: 'Approvals', requiresAuth: true },
+  },
+  {
+    path: '/tools',
+    name: 'tools',
+    component: ToolsView,
+    meta: { title: 'Tools', requiresAuth: true },
   },
   {
     path: '/projects',

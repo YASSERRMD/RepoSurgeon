@@ -17,6 +17,8 @@ const navLinks = [
   { to: '/projects', label: 'Projects' },
   { to: '/members', label: 'Members' },
   { to: '/credentials', label: 'Credentials' },
+  { to: '/approvals', label: 'Approvals' },
+  { to: '/tools', label: 'Tools' },
 ];
 
 const userEmail = computed(() => auth.user?.email ?? '');
