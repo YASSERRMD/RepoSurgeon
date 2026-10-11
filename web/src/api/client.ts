@@ -1,7 +1,17 @@
 import type {
   ApiErrorBody,
   AuditEventPage,
+  CurrentUser,
+  Credential,
+  CredentialCreate,
+  CredentialPage,
+  CredentialRotate,
   LiveStatus,
+  LoginRequest,
+  Member,
+  MemberInvite,
+  MemberPage,
+  MemberUpdate,
   Organization,
   OrganizationCreate,
   OrganizationPage,
@@ -10,6 +20,7 @@ import type {
   ProjectPage,
   ProjectUpdate,
   ReadinessReport,
+  SessionResponse,
   SystemInfo,
 } from './types';
 
@@ -18,7 +29,7 @@ const DEFAULT_TIMEOUT_MS = 8000;
 
 /** Header names defined by the OpenAPI contract's `components/parameters`. */
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
-const DEV_SUBJECT_HEADER = 'X-Dev-Subject';
+const CSRF_TOKEN_HEADER = 'X-CSRF-Token';
 
 export interface ApiErrorInit {
   status: number;
@@ -78,6 +89,24 @@ async function parseError(response: Response): Promise<ApiError> {
   });
 }
 
+/**
+ * csrfToken is held in module memory only. It is never written to
+ * localStorage, sessionStorage or a cookie of ours: the session travels in the
+ * HttpOnly cookie the server sets, and this value only proves the request came
+ * from our own page.
+ */
+let csrfToken: string | null = null;
+
+/** setCsrfToken records the token returned by login or refresh. */
+export function setCsrfToken(token: string | null): void {
+  csrfToken = token === null || token.trim() === '' ? null : token;
+}
+
+/** getCsrfToken returns the in-memory CSRF token, or null before any session. */
+export function getCsrfToken(): string | null {
+  return csrfToken;
+}
+
 export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -85,14 +114,16 @@ export interface RequestOptions {
   acceptStatuses?: number[];
 }
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH';
+export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+/** Mutations carry CSRF protection; read-only calls never need the token. */
+const MUTATING_METHODS: readonly HttpMethod[] = ['POST', 'PATCH', 'DELETE'];
 
 interface RawRequest {
   method: HttpMethod;
   path: string;
   body?: unknown;
   idempotencyKey?: string | undefined;
-  devSubject?: string | undefined;
   signal?: AbortSignal | undefined;
   timeoutMs?: number | undefined;
   acceptStatuses?: number[] | undefined;
@@ -119,8 +150,8 @@ function query(params: Record<string, string | number | undefined>): string {
   return serialized === '' ? '' : `?${serialized}`;
 }
 
-/** request performs one typed JSON call against the API and returns parsed JSON. */
-async function request<T>(init: RawRequest): Promise<T> {
+/** send performs one call against the API and turns failures into ApiError. */
+async function send(init: RawRequest): Promise<Response> {
   const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timeout = AbortSignal.timeout(timeoutMs);
   const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
@@ -130,15 +161,18 @@ async function request<T>(init: RawRequest): Promise<T> {
   if (init.idempotencyKey !== undefined) {
     headers[IDEMPOTENCY_KEY_HEADER] = init.idempotencyKey;
   }
-  if (init.devSubject !== undefined && init.devSubject !== '') {
-    headers[DEV_SUBJECT_HEADER] = init.devSubject;
+  if (csrfToken !== null && MUTATING_METHODS.includes(init.method)) {
+    headers[CSRF_TOKEN_HEADER] = csrfToken;
   }
 
+  // `include` is mandatory: the session cookie is the only way a browser
+  // authenticates. `no-referrer` keeps internal URLs out of other origins.
   const requestInit: RequestInit = {
     method: init.method,
     headers,
-    signal,
+    credentials: 'include',
     referrerPolicy: 'no-referrer',
+    signal,
   };
   if (init.body !== undefined) {
     requestInit.body = JSON.stringify(init.body);
@@ -162,7 +196,18 @@ async function request<T>(init: RawRequest): Promise<T> {
   if (!response.ok && !accepted) {
     throw await parseError(response);
   }
+  return response;
+}
+
+/** request performs one typed JSON call against the API and returns parsed JSON. */
+async function request<T>(init: RawRequest): Promise<T> {
+  const response = await send(init);
   return (await response.json()) as T;
+}
+
+/** requestEmpty performs a call whose success carries no body (204). */
+async function requestEmpty(init: RawRequest): Promise<void> {
+  await send(init);
 }
 
 export interface OrganizationListParams {
@@ -184,33 +229,33 @@ export interface AuditEventListParams {
   limit?: number;
 }
 
-export interface HealthClientOptions {
-  /**
-   * devSubject is sent as `X-Dev-Subject`. The API resolves the calling subject
-   * from it until authentication lands in M02; it is only accepted outside
-   * production, so it stays undefined unless explicitly configured.
-   */
-  devSubject?: string | undefined;
+export interface MemberListParams {
+  organization_id: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface CredentialListParams {
+  organization_id: string;
+  cursor?: string;
+  limit?: number;
 }
 
 /**
- * HealthClient is the typed browser client for the health, system, organization,
- * project and audit endpoints. Every method maps 1:1 to an operation in
- * api/openapi.yaml; the drift check in CI fails when the contract changes
- * without regenerating this client's types.
+ * HealthClient is the typed browser client for the health, system, auth,
+ * organization, project, member, credential and audit endpoints. Every method
+ * maps 1:1 to an operation in api/openapi.yaml; the drift check in CI fails when
+ * the contract changes without regenerating this client's types.
  */
 export class HealthClient {
-  private readonly devSubject: string | undefined;
-
-  constructor(
-    private readonly baseUrl: string = '',
-    options: HealthClientOptions = {},
-  ) {
-    this.devSubject = options.devSubject;
-  }
+  constructor(private readonly baseUrl: string = '') {}
 
   private call<T>(init: RawRequest): Promise<T> {
-    return request<T>({ ...init, devSubject: this.devSubject });
+    return request<T>(init);
+  }
+
+  private callEmpty(init: RawRequest): Promise<void> {
+    return requestEmpty(init);
   }
 
   getLive(options?: RequestOptions): Promise<LiveStatus> {
@@ -241,6 +286,49 @@ export class HealthClient {
     return this.call<SystemInfo>({
       method: 'GET',
       path: `${this.baseUrl}/api/v1/system/info`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * login exchanges email and password for a session cookie and CSRF token.
+   * The token is kept in memory for the mutations that follow.
+   */
+  async login(body: LoginRequest): Promise<SessionResponse> {
+    const session = await this.call<SessionResponse>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/auth/login`,
+      body,
+    });
+    setCsrfToken(session.csrf_token);
+    return session;
+  }
+
+  /** logout revokes the current session; the server clears the cookie. */
+  logout(): Promise<void> {
+    return this.callEmpty({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/auth/logout`,
+    });
+  }
+
+  /** refreshSession rotates the session and returns a fresh CSRF token. */
+  async refreshSession(): Promise<SessionResponse> {
+    const session = await this.call<SessionResponse>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/auth/refresh`,
+    });
+    setCsrfToken(session.csrf_token);
+    return session;
+  }
+
+  /** getCurrentUser returns the caller with roles and permissions per organization. */
+  getCurrentUser(options?: RequestOptions): Promise<CurrentUser> {
+    return this.call<CurrentUser>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/me`,
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       acceptStatuses: options?.acceptStatuses,
@@ -329,12 +417,90 @@ export class HealthClient {
       acceptStatuses: options?.acceptStatuses,
     });
   }
+
+  listMembers(params: MemberListParams, options?: RequestOptions): Promise<MemberPage> {
+    return this.call<MemberPage>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/members${query({
+        organization_id: params.organization_id,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  inviteMember(body: MemberInvite, key: string): Promise<Member> {
+    return this.call<Member>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/members`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  updateMemberRole(membershipId: string, body: MemberUpdate, key: string): Promise<Member> {
+    return this.call<Member>({
+      method: 'PATCH',
+      path: `${this.baseUrl}/api/v1/members/${encodeURIComponent(membershipId)}`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  removeMember(membershipId: string): Promise<void> {
+    return this.callEmpty({
+      method: 'DELETE',
+      path: `${this.baseUrl}/api/v1/members/${encodeURIComponent(membershipId)}`,
+    });
+  }
+
+  listCredentials(params: CredentialListParams, options?: RequestOptions): Promise<CredentialPage> {
+    return this.call<CredentialPage>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/credentials${query({
+        organization_id: params.organization_id,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  createCredential(body: CredentialCreate, key: string): Promise<Credential> {
+    return this.call<Credential>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/credentials`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  rotateCredential(credentialId: string, body: CredentialRotate, key: string): Promise<Credential> {
+    return this.call<Credential>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/credentials/${encodeURIComponent(credentialId)}/rotate`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  revokeCredential(credentialId: string): Promise<void> {
+    return this.callEmpty({
+      method: 'DELETE',
+      path: `${this.baseUrl}/api/v1/credentials/${encodeURIComponent(credentialId)}`,
+    });
+  }
 }
 
 /**
  * createHealthClient builds the client used by the app. The base URL is empty
  * by default so the browser talks to the same origin that served the SPA.
  */
-export function createHealthClient(baseUrl = '', options: HealthClientOptions = {}): HealthClient {
-  return new HealthClient(baseUrl, options);
+export function createHealthClient(baseUrl = ''): HealthClient {
+  return new HealthClient(baseUrl);
 }

@@ -1,15 +1,21 @@
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import { ApiError, HealthClient, newIdempotencyKey } from './client';
+import { ApiError, HealthClient, getCsrfToken, newIdempotencyKey, setCsrfToken } from './client';
 import type {
   AuditEvent,
   AuditEventPage,
+  CurrentUser,
+  Credential,
+  CredentialPage,
   LiveStatus,
+  Member,
+  MemberPage,
   Organization,
   OrganizationPage,
   Project,
   ProjectPage,
   ReadinessReport,
+  SessionResponse,
   SystemInfo,
 } from './types';
 
@@ -38,7 +44,22 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+function emptyResponse(status = 204): Response {
+  return new Response(null, { status });
+}
+
+/** headersOf reads the request headers of a recorded call. */
+function headersOf(init: RequestInit): Record<string, string> {
+  return (init.headers ?? {}) as Record<string, string>;
+}
+
+beforeEach(() => {
+  // The CSRF token lives in module memory; every test starts from no session.
+  setCsrfToken(null);
+});
+
 afterEach(() => {
+  setCsrfToken(null);
   vi.unstubAllGlobals();
 });
 
@@ -439,26 +460,411 @@ describe('HealthClient audit', () => {
   });
 });
 
-describe('HealthClient dev subject', () => {
-  it('sends X-Dev-Subject when configured', async () => {
-    const fetchMock = stubFetch({ items: [], next_cursor: null } satisfies OrganizationPage);
+const session: SessionResponse = {
+  user: {
+    id: 'usr_1a2b3c4d5e6f7g8h9i0j',
+    email: 'developer@example.com',
+    display_name: 'Developer',
+  },
+  csrf_token: 'csrf_9f8e7d6c5b4a',
+  expires_at: '2026-10-11T10:00:00Z',
+};
+
+const currentUser: CurrentUser = {
+  ...session.user,
+  organizations: [
+    {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      role: 'owner',
+      permissions: ['project.read', 'project.write', 'member.admin', 'credential.admin'],
+    },
+  ],
+};
+
+const member: Member = {
+  id: 'mem_1a2b3c4d5e6f7g8h9i0j',
+  user_id: 'usr_1a2b3c4d5e6f7g8h9i0j',
+  email: 'developer@example.com',
+  display_name: 'Developer',
+  role: 'owner',
+  created_at: '2026-10-10T10:00:00Z',
+};
+
+/** The contract exposes metadata only: `value` is write-only and never returned. */
+const credential: Credential = {
+  id: 'crd_1a2b3c4d5e6f7g8h9i0j',
+  organization_id: organization.id,
+  kind: 'stepfun',
+  label: 'production keys',
+  status: 'active',
+  key_version: 2,
+  fingerprint: 'a1b2c3d4e5f60718a9b0c1d2e3f40516',
+  last_verified_at: null,
+  created_at: '2026-10-10T10:00:00Z',
+};
+
+const CREDENTIAL_METADATA_KEYS = [
+  'created_at',
+  'fingerprint',
+  'id',
+  'key_version',
+  'kind',
+  'label',
+  'last_verified_at',
+  'organization_id',
+  'status',
+];
+
+describe('HealthClient auth', () => {
+  it('signs in with the session cookie, email and password', async () => {
+    const fetchMock = stubFetch(session);
     vi.stubGlobal('fetch', fetchMock);
 
-    await new HealthClient('', { devSubject: 'usr_dev_1' }).listOrganizations();
+    const client = new HealthClient('');
+    await expect(
+      client.login({
+        email: 'developer@example.com',
+        password: 'correct-horse-battery-staple',
+      }),
+    ).resolves.toEqual(session);
 
-    expect(lastCall(fetchMock).init.headers).toMatchObject({ 'X-Dev-Subject': 'usr_dev_1' });
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/auth/login');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.referrerPolicy).toBe('no-referrer');
+    expect(JSON.parse(String(init.body))).toEqual({
+      email: 'developer@example.com',
+      password: 'correct-horse-battery-staple',
+    });
+    expect(headersOf(init)).toMatchObject({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    // Login happens before a session exists, so no CSRF token is attached.
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
   });
 
-  it('omits X-Dev-Subject when unconfigured, including on mutations', async () => {
-    const fetchMock = stubFetch(organization, 201);
+  it('exposes the returned CSRF token in memory only', async () => {
+    vi.stubGlobal('fetch', stubFetch(session));
+
+    await new HealthClient('').login({
+      email: 'developer@example.com',
+      password: 'correct-horse-battery-staple',
+    });
+
+    expect(getCsrfToken()).toBe('csrf_9f8e7d6c5b4a');
+    setCsrfToken('rotated_csrf_token');
+    expect(getCsrfToken()).toBe('rotated_csrf_token');
+    setCsrfToken(null);
+    expect(getCsrfToken()).toBeNull();
+    setCsrfToken('');
+    expect(getCsrfToken()).toBeNull();
+  });
+
+  it('maps 401 login failures to invalid_credentials', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'invalid_credentials',
+            message: 'email or password is incorrect',
+            request_id: 'req_0123456789abcdef',
+          },
+        },
+        401,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .login({ email: 'developer@example.com', password: 'wrong-password-here' })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(401);
+    expect(apiError.code).toBe('invalid_credentials');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 429 to rate_limited and marks it retryable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'rate_limited',
+            message: 'too many failed login attempts; try again later',
+            request_id: 'req_0123456789abcdef',
+          },
+        },
+        429,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .login({ email: 'developer@example.com', password: 'correct-horse-battery-staple' })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(429);
+    expect(apiError.code).toBe('rate_limited');
+    expect(apiError.retryable).toBe(true);
+  });
+
+  it('sends the CSRF token and cookie on logout', async () => {
+    setCsrfToken('csrf_keep_me');
+    const fetchMock = vi.fn().mockResolvedValue(emptyResponse(204));
     vi.stubGlobal('fetch', fetchMock);
 
-    await new HealthClient('').createOrganization({ name: 'Acme', slug: 'acme-eng' }, 'idem_key_9');
+    await expect(new HealthClient('').logout()).resolves.toBeUndefined();
 
-    const headers = lastCall(fetchMock).init.headers;
-    const headerNames = Object.keys(headers ?? {});
-    expect(headerNames).toContain('Idempotency-Key');
-    expect(headerNames).not.toContain('X-Dev-Subject');
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/auth/logout');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(headersOf(init)).toMatchObject({ 'X-CSRF-Token': 'csrf_keep_me' });
+    expect(init.body).toBeUndefined();
+  });
+
+  it('rotates the session with the CSRF token and returns the new one', async () => {
+    setCsrfToken('csrf_before_rotate');
+    const rotated: SessionResponse = {
+      ...session,
+      csrf_token: 'csrf_after_rotate',
+    };
+    const fetchMock = stubFetch(rotated);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new HealthClient('/base').refreshSession();
+
+    expect(result.csrf_token).toBe('csrf_after_rotate');
+    expect(lastCall(fetchMock).url).toBe('/base/api/v1/auth/refresh');
+    expect(headersOf(lastCall(fetchMock).init)).toMatchObject({
+      'X-CSRF-Token': 'csrf_before_rotate',
+    });
+  });
+
+  it('reads the current user with roles and permissions', async () => {
+    const fetchMock = stubFetch(currentUser);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    await expect(client.getCurrentUser()).resolves.toEqual(currentUser);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/me');
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('maps a session that no longer exists to unauthenticated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'unauthenticated',
+            message: 'authentication is required',
+            request_id: 'r_1',
+          },
+        },
+        401,
+      ),
+    );
+
+    const error = await new HealthClient('').getCurrentUser().catch((err: unknown) => err);
+    expect((error as ApiError).code).toBe('unauthenticated');
+    expect((error as ApiError).status).toBe(401);
+  });
+});
+
+describe('HealthClient members', () => {
+  it('lists members of an organization', async () => {
+    const page: MemberPage = { items: [member], next_cursor: null };
+    const fetchMock = stubFetch(page);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new HealthClient('').listMembers({ organization_id: organization.id }),
+    ).resolves.toEqual(page);
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/members?organization_id=${organization.id}`);
+    expect(init.method).toBe('GET');
+  });
+
+  it('invites a member with an Idempotency-Key, the CSRF token and the role', async () => {
+    setCsrfToken('csrf_invite');
+    const fetchMock = stubFetch(member, 201);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    const invited = await client.inviteMember(
+      { organization_id: organization.id, email: 'teammate@example.com', role: 'maintainer' },
+      'idem_invite_1',
+    );
+
+    expect(invited).toEqual(member);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/members');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      organization_id: organization.id,
+      email: 'teammate@example.com',
+      role: 'maintainer',
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Idempotency-Key': 'idem_invite_1',
+      'X-CSRF-Token': 'csrf_invite',
+    });
+  });
+
+  it('updates a role through PATCH on the membership id', async () => {
+    setCsrfToken('csrf_role');
+    const updated: Member = { ...member, role: 'reviewer' };
+    const fetchMock = stubFetch(updated);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new HealthClient('').updateMemberRole(
+      member.id,
+      { role: 'reviewer' },
+      'idem_role_1',
+    );
+
+    expect(result.role).toBe('reviewer');
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/members/${member.id}`);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(String(init.body))).toEqual({ role: 'reviewer' });
+    expect(headersOf(init)).toMatchObject({
+      'Idempotency-Key': 'idem_role_1',
+      'X-CSRF-Token': 'csrf_role',
+    });
+  });
+
+  it('removes a member with DELETE and no body', async () => {
+    setCsrfToken('csrf_remove');
+    const fetchMock = vi.fn().mockResolvedValue(emptyResponse(204));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new HealthClient('').removeMember(member.id);
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/members/${member.id}`);
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+    expect(headersOf(init)).toMatchObject({ 'X-CSRF-Token': 'csrf_remove' });
+  });
+
+  it('maps 409 conflicts to the server rejection message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'conflict',
+            message: 'the last owner cannot be removed',
+            request_id: 'req_owner',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await new HealthClient('').removeMember(member.id).catch((err: unknown) => err);
+    expect((error as ApiError).status).toBe(409);
+    expect((error as ApiError).message).toBe('the last owner cannot be removed');
+    expect((error as ApiError).retryable).toBe(false);
+  });
+});
+
+describe('HealthClient credentials', () => {
+  it('lists credential metadata and never a value field', async () => {
+    const page: CredentialPage = { items: [credential], next_cursor: null };
+    const fetchMock = stubFetch(page);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    const result = await client.listCredentials({ organization_id: organization.id });
+
+    expect(result.items).toHaveLength(1);
+    expect(Object.keys(result.items[0]).sort()).toEqual(CREDENTIAL_METADATA_KEYS);
+    expect(Object.hasOwn(result.items[0], 'value')).toBe(false);
+    expect(Object.hasOwn(result.items[0], 'secret')).toBe(false);
+    expect(lastCall(fetchMock).url).toBe(`/api/v1/credentials?organization_id=${organization.id}`);
+  });
+
+  it('creates a credential with the value in the request body only', async () => {
+    setCsrfToken('csrf_create');
+    const fetchMock = stubFetch(credential, 201);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    const created = await client.createCredential(
+      {
+        organization_id: organization.id,
+        kind: 'stepfun',
+        label: 'production keys',
+        value: 'sf-live-xxxxxxxxxxxxxxxx',
+      },
+      'idem_credential_1',
+    );
+
+    expect(created).toEqual(credential);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/credentials');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      organization_id: organization.id,
+      kind: 'stepfun',
+      label: 'production keys',
+      value: 'sf-live-xxxxxxxxxxxxxxxx',
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Idempotency-Key': 'idem_credential_1',
+      'X-CSRF-Token': 'csrf_create',
+    });
+  });
+
+  it('rotates a credential at the rotate path', async () => {
+    setCsrfToken('csrf_rotate');
+    const rotated: Credential = { ...credential, key_version: 3 };
+    const fetchMock = stubFetch(rotated);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new HealthClient('').rotateCredential(
+      credential.id,
+      { value: 'sf-live-yyyyyyyyyyyyyyyy' },
+      'idem_rotate_1',
+    );
+
+    expect(result.key_version).toBe(3);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/credentials/${credential.id}/rotate`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ value: 'sf-live-yyyyyyyyyyyyyyyy' });
+    expect(headersOf(init)).toMatchObject({
+      'Idempotency-Key': 'idem_rotate_1',
+      'X-CSRF-Token': 'csrf_rotate',
+    });
+  });
+
+  it('revokes a credential with DELETE', async () => {
+    setCsrfToken('csrf_revoke');
+    const fetchMock = vi.fn().mockResolvedValue(emptyResponse(204));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new HealthClient('').revokeCredential(credential.id);
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/credentials/${credential.id}`);
+    expect(init.method).toBe('DELETE');
+    expect(headersOf(init)).toMatchObject({ 'X-CSRF-Token': 'csrf_revoke' });
   });
 });
 
