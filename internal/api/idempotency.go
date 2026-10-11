@@ -23,6 +23,11 @@ func (s *Server) idempotent(w http.ResponseWriter, r *http.Request, endpoint str
 	if !ok {
 		return
 	}
+	s.runIdempotent(w, r, subject, endpoint, handler)
+}
+
+// runIdempotent performs the shared replay/record flow.
+func (s *Server) runIdempotent(w http.ResponseWriter, r *http.Request, subject Subject, endpoint string, handler func(subject Subject) (int, any)) {
 	key, ok := idempotencyKeyFor(w, r)
 	if !ok {
 		return
@@ -71,6 +76,19 @@ func (s *Server) idempotent(w http.ResponseWriter, r *http.Request, endpoint str
 		s.log.Error("idempotency record failed", "endpoint", endpoint, "err", err)
 	}
 	WriteJSON(w, status, payload)
+}
+
+// idempotentSession is idempotent for callers that need the full session
+// subject (organization id, session hash, csrf hash).
+func (s *Server) idempotentSession(w http.ResponseWriter, r *http.Request, endpoint string, handler func(subject sessionSubject) (int, any)) {
+	subject, ok := sessionFrom(r.Context())
+	if !ok {
+		requireSession(w, r)
+		return
+	}
+	s.runIdempotent(w, r, subject.Subject, endpoint, func(inner Subject) (int, any) {
+		return handler(sessionSubject{Subject: inner, SessionHash: subject.SessionHash, CSRFHash: subject.CSRFHash})
+	})
 }
 
 // readBody buffers the request body so it can be fingerprinted and decoded.
