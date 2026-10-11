@@ -48,7 +48,9 @@ type Options struct {
 	Runs  RunScheduler
 	Queue TaskQueueService
 	// Tools exposes the M07 catalog, policy and approval gateway.
-	Tools     *ToolService
+	Tools *ToolService
+	// Context exposes the M08 index, context builder and manifest store.
+	Context   *ContextService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -70,6 +72,7 @@ type Server struct {
 	runs       RunScheduler
 	queue      TaskQueueService
 	tools      *ToolService
+	context    *ContextService
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -123,6 +126,7 @@ func NewServer(opts Options) (*Server, error) {
 		runs:       opts.Runs,
 		queue:      opts.Queue,
 		tools:      opts.Tools,
+		context:    opts.Context,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -252,7 +256,6 @@ func (s *Server) registerRoutes(router *Router) {
 	if s.workspaces != nil {
 		router.Handle(http.MethodPost, "/api/v1/workspaces", s.handleCreateWorkspace)
 		router.Handle(http.MethodDelete, "/api/v1/workspaces/{workspace_id}", s.handleDestroyWorkspace)
-		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/tree", s.handleWorkspaceTree)
 	}
 	s.permissionResolver = func(ctx context.Context, session sessionSubject) []string {
 		if s.auth == nil || s.auth.members == nil {
@@ -264,6 +267,14 @@ func (s *Server) registerRoutes(router *Router) {
 		}
 		return granted
 	}
+	if s.context != nil {
+		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/search", s.handleWorkspaceSearch)
+		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/files", s.handleWorkspaceFiles)
+		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/symbols", s.handleWorkspaceSymbols)
+	}
+	if s.workspaces != nil {
+		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/tree", s.handleWorkspaceTree)
+	}
 	if s.tools != nil {
 		router.Handle(http.MethodGet, "/api/v1/tools", s.handleListTools)
 		router.Handle(http.MethodGet, "/api/v1/approvals", s.handleListApprovals)
@@ -271,6 +282,8 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/approvals/{approval_id}/decide", s.handleDecideApproval)
 	}
 	if s.runs != nil && s.queue != nil {
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/context", s.handleRunContext)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/context/refresh", s.handleRunContextRefresh)
 		router.Handle(http.MethodPost, "/api/v1/runs", s.handleCreateRun)
 		router.Handle(http.MethodGet, "/api/v1/runs", s.handleListRuns)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}", s.handleGetRun)

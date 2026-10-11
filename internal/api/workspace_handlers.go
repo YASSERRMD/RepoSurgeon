@@ -5,13 +5,11 @@ import (
 	"strings"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/domain"
-	"github.com/YASSERRMD/RepoSurgeon/internal/gitworkspace"
 	"github.com/YASSERRMD/RepoSurgeon/internal/ids"
 )
 
-// handleCreateWorkspace pins a base commit and records a workspace. The actual
-// clone is performed by the worker in later milestones; M05 exposes the
-// lifecycle surface and the manager that performs it.
+// handleCreateWorkspace pins a base commit and clones a repository into a
+// dedicated workspace directory.
 func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	session, ok := sessionFrom(r.Context())
 	if !ok {
@@ -47,7 +45,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, &Error{
 			Status:  http.StatusBadRequest,
 			Code:    "validation_failed",
-			Message: err.Error(),
+			Message: "base_sha must be a 40-character commit sha",
 		}, nil)
 		return
 	}
@@ -94,7 +92,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleDestroyWorkspace removes a workspace and its worktrees.
+// handleDestroyWorkspace removes a workspace directory and its worktrees.
 func (s *Server) handleDestroyWorkspace(w http.ResponseWriter, r *http.Request) {
 	session, ok := sessionFrom(r.Context())
 	if !ok {
@@ -124,44 +122,4 @@ func (s *Server) handleDestroyWorkspace(w http.ResponseWriter, r *http.Request) 
 		EntityID:       workspaceID,
 	})
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleWorkspaceTree lists the files in a workspace checkout.
-func (s *Server) handleWorkspaceTree(w http.ResponseWriter, r *http.Request) {
-	session, ok := sessionFrom(r.Context())
-	if !ok {
-		requireSession(w, r)
-		return
-	}
-	if !s.checkPermission(w, r, session, "project.read") {
-		return
-	}
-	if s.workspaces == nil {
-		WriteError(w, r, &Error{
-			Status:  http.StatusServiceUnavailable,
-			Code:    "workspaces_disabled",
-			Message: "the workspace manager is not configured on this server",
-		}, nil)
-		return
-	}
-	workspaceID := Params(r.Context())["workspace_id"]
-	path := s.workspaces.WorkspacePath(workspaceID)
-	if !gitworkspace.Exists(path) {
-		WriteError(w, r, ErrNotFound, nil)
-		return
-	}
-	entries, err := gitworkspace.ListFiles(path)
-	if err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-	items := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		items = append(items, map[string]any{
-			"path":   entry.Path,
-			"is_dir": entry.IsDir,
-			"size":   entry.Size,
-		})
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
