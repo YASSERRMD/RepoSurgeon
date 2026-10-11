@@ -23,7 +23,7 @@ jobs:
       # The credential key is generated at run time: CI must never carry a
       # long-lived encryption key in the repository.
       - name: Generate ephemeral credential key
-        run: echo "RS_CREDENTIAL_KEK=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+        run: printf 'RS_CREDENTIAL_KEK=%s\n' "$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       - name: Compose smoke
         run: bash scripts/smoke-compose.sh
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Generate ephemeral credential key
-        run: echo "RS_CREDENTIAL_KEK=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+        run: printf 'RS_CREDENTIAL_KEK=%s\n' "$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       - name: Start stack
         run: |
