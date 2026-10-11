@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 )
@@ -107,11 +108,23 @@ func HashBody(body string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// NewRunID returns a fresh run identifier.
+func NewRunID() string { return "run_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
+// NewTaskID returns a fresh task identifier.
+func NewTaskID() string { return "tsk_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // NewInstallationID returns a fresh installation binding identifier.
 func NewInstallationID() string { return "ghi_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 
 // NewIssueID returns a fresh issue identifier.
 func NewIssueID() string { return "iss_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
+// Queue sentinels.
+var (
+	// ErrNoTaskAvailable is returned when a claim finds nothing to work on.
+	ErrNoTaskAvailable = errors.New("queue: no task available")
+)
 
 // Membership roles, enforced by the database check constraint and by the
 // policy layer.
