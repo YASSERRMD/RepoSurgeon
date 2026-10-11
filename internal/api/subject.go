@@ -142,5 +142,16 @@ func requireSubject(w http.ResponseWriter, r *http.Request) (Subject, bool) {
 // errNoSubject reports a caller that could not be resolved.
 var errNoSubject = errors.New("api: no subject")
 
+// requireSession writes 401 unless the request carries a live session.
+func requireSession(w http.ResponseWriter, r *http.Request) {
+	if _, ok := sessionFrom(r.Context()); !ok {
+		WriteError(w, r, &Error{
+			Status:  http.StatusUnauthorized,
+			Code:    "unauthenticated",
+			Message: "authentication is required",
+		}, nil)
+	}
+}
+
 // errNoOrganization is returned when a caller belongs to no organization yet.
 var errNoOrganization = errNoSubject
