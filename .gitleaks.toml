@@ -1,15 +1,19 @@
 title = "RepoSurgeon gitleaks configuration"
 
-# Extend the default rule set; this file only narrows one known false-positive
-# source: the redaction unit tests contain deliberately fake credential
-# strings (for example "token: abc123") that must be scanned by our own
-# redaction logic, not flagged as leaked secrets. The allowlist is scoped to
-# exactly that file.
+# Extend the default rule set; this file only narrows two known
+# false-positive sources that contain deliberately non-secret credential
+# material.
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Deliberately fake credential fixtures in redaction unit tests"
 paths = [
     '''internal/redact/redact_test\.go$''',
+]
+
+[[allowlists]]
+description = "CI-only, non-secret credential key for the compose smoke workflow; the value is public in the repository"
+paths = [
+    '''\.github/workflows/compose-smoke\.yml$''',
 ]

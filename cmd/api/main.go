@@ -38,7 +38,12 @@ func run() error {
 	migrateOnly := flag.Bool("migrate-only", false, "apply pending migrations and exit")
 	flag.Parse()
 
-	cfg, err := config.Load()
+	// A migrate-only run never touches encrypted credentials, so it must not
+	// require the credential key.
+	cfg, err := config.LoadFrom(os.LookupEnv, config.LoadOptions{
+		RequireDatabase:      true,
+		RequireCredentialKey: !*migrateOnly,
+	})
 	if err != nil {
 		return err
 	}
@@ -74,9 +79,14 @@ func run() error {
 		store.NewAudit(pool),
 		store.NewIdempotency(pool),
 	)
-	encryptor, err := secrets.New(cfg.CredentialKEK, cfg.CredentialKeyVersion)
-	if err != nil {
-		return fmt.Errorf("credential encryption: %w", err)
+	// Migrations never touch encrypted credentials, so a migrate-only run
+	// skips building the encryptor entirely.
+	var encryptor *secrets.Encryptor
+	if !*migrateOnly {
+		encryptor, err = secrets.New(cfg.CredentialKEK, cfg.CredentialKeyVersion)
+		if err != nil {
+			return fmt.Errorf("credential encryption: %w", err)
+		}
 	}
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
