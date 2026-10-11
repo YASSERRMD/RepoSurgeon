@@ -52,6 +52,22 @@ export type ApprovalCreate = components['schemas']['ApprovalCreate'];
 export type ApprovalDecision = components['schemas']['ApprovalDecision'];
 export type ApprovalDecisionChoice = ApprovalDecision['decision'];
 
+/**
+ * Code search and the context inspector (M08). Every hit, file and manifest
+ * item describes repository content, which is untrusted data: it is displayed
+ * for review and can never grant a permission or become an instruction.
+ */
+export type SearchHit = components['schemas']['SearchHit'];
+export type SymbolHit = components['schemas']['SymbolHit'];
+export type SymbolKind = SymbolHit['kind'];
+export type IndexedFile = components['schemas']['IndexedFile'];
+export type ContextItem = components['schemas']['ContextItem'];
+export type ContextManifest = components['schemas']['ContextManifest'];
+export type ContextRefresh = components['schemas']['ContextRefresh'];
+export type ContextStrategy = ContextManifest['strategy'];
+/** The budget choices the contract enumerates; the full window is never implied. */
+export type ContextTokenBudget = NonNullable<ContextRefresh['token_budget']>;
+
 export type ReadinessStatus = ReadinessReport['status'];
 export type CheckStatus = ReadinessCheck['status'];
 export type ProjectSettings = NonNullable<ProjectUpdate['settings']>;
@@ -103,3 +119,15 @@ export type ToolListResponse = JsonOf<'/api/v1/tools', 200>;
 export type ApprovalListResponse = JsonOf<'/api/v1/approvals', 200>;
 export type ApprovalCreateResponse = JsonOf<'/api/v1/approvals', 201>;
 export type ApprovalDecisionResponse = JsonOf<'/api/v1/approvals/{approval_id}/decide', 200>;
+
+export type WorkspaceSearchResponse = JsonOf<'/api/v1/workspaces/{workspace_id}/search', 200>;
+export type WorkspaceFileListResponse = JsonOf<'/api/v1/workspaces/{workspace_id}/files', 200>;
+export type WorkspaceSymbolLookupResponse = JsonOf<
+  '/api/v1/workspaces/{workspace_id}/symbols',
+  200
+>;
+export type RunContextResponse = JsonOf<'/api/v1/runs/{run_id}/context', 200>;
+export type RunContextRefreshResponse = JsonOf<'/api/v1/runs/{run_id}/context/refresh', 201>;
+
+/** LanguageSummary is one row of the per-language file counts in the index. */
+export type LanguageSummary = WorkspaceFileListResponse['languages'][number];

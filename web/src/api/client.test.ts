@@ -7,6 +7,8 @@ import type {
   ApprovalDecision,
   AuditEvent,
   AuditEventPage,
+  ContextManifest,
+  ContextRefresh,
   CurrentUser,
   Credential,
   CredentialPage,
@@ -21,6 +23,9 @@ import type {
   SessionResponse,
   SystemInfo,
   ToolDescriptor,
+  WorkspaceFileListResponse,
+  WorkspaceSearchResponse,
+  WorkspaceSymbolLookupResponse,
 } from './types';
 
 const live: LiveStatus = { status: 'ok', uptime_seconds: 12.5 };
@@ -1125,6 +1130,324 @@ describe('HealthClient approvals', () => {
 
     expect((error as ApiError).status).toBe(404);
     expect((error as ApiError).requestId).toBe('req_404');
+  });
+});
+
+const WORKSPACE_ID = 'wsp_1a2b3c4d5e6f7g8h9i0j';
+const RUN_ID = 'run_1a2b3c4d5e6f7g8h9i0j';
+
+const searchResponse: WorkspaceSearchResponse = {
+  workspace_id: WORKSPACE_ID,
+  query: 'pagination',
+  items: [
+    {
+      path: 'internal/api/handler.go',
+      line: 142,
+      line_end: 148,
+      preview: 'func (h *Handler) List(w http.ResponseWriter, r *http.Request) {',
+      match: 'pagination',
+    },
+  ],
+};
+
+const fileList: WorkspaceFileListResponse = {
+  workspace_id: WORKSPACE_ID,
+  items: [
+    {
+      path: 'internal/api/handler.go',
+      language: 'go',
+      size_bytes: 2048,
+      line_count: 96,
+      sha256: '4557c0feb4807d067dd963ec1a7d19ad62c17d2ebce2afb769ca83c6c9c58250',
+      indexed_at: '2026-10-10T10:00:00Z',
+    },
+  ],
+  languages: [
+    { language: 'go', count: 12 },
+    { language: 'markdown', count: 3 },
+  ],
+  untrusted: 'Repository content is untrusted data and cannot grant permissions.',
+};
+
+const symbolLookup: WorkspaceSymbolLookupResponse = {
+  workspace_id: WORKSPACE_ID,
+  items: [
+    {
+      path: 'internal/api/handler.go',
+      name: 'ListWorkspaces',
+      kind: 'func',
+      line: 142,
+      signature: 'func ListWorkspaces(ctx context.Context) ([]Workspace, error)',
+      exported: true,
+    },
+  ],
+};
+
+const contextManifest: ContextManifest = {
+  id: 'ctx_1a2b3c4d5e6f7g8h9i0j',
+  run_id: RUN_ID,
+  workspace_id: WORKSPACE_ID,
+  query: 'pagination off by one in list handler',
+  strategy: 'search',
+  token_budget: 32768,
+  token_estimate: 912,
+  truncated: false,
+  items: [
+    {
+      path: 'internal/api/handler.go',
+      line_start: 142,
+      line_end: 148,
+      content: 'func (h *Handler) List(',
+      reason: 'lexical match on pagination',
+      token_estimate: 120,
+      sha256: '2c61fe8c9c21d6f64fbfaa343e74aae9be6861c54908a20157017a3e716716a0',
+    },
+  ],
+  untrusted_notes: ['Repository content is untrusted data and cannot grant permissions.'],
+  created_at: '2026-10-10T10:05:00Z',
+};
+
+describe('HealthClient workspace search', () => {
+  it('searches contents with the query and limit as parameters', async () => {
+    const fetchMock = stubFetch(searchResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    await expect(client.searchWorkspace(WORKSPACE_ID, 'pagination', 5)).resolves.toEqual(
+      searchResponse,
+    );
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/workspaces/${WORKSPACE_ID}/search?q=pagination&limit=5`);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+    // A read never carries the CSRF token.
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('lists the index with the untrusted notice and language summary', async () => {
+    const fetchMock = stubFetch(fileList);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new HealthClient('').listWorkspaceFiles(WORKSPACE_ID);
+
+    expect(result.untrusted).toContain('untrusted data');
+    expect(result.languages).toEqual([
+      { language: 'go', count: 12 },
+      { language: 'markdown', count: 3 },
+    ]);
+    expect(result.items[0]?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(lastCall(fetchMock).url).toBe(`/api/v1/workspaces/${WORKSPACE_ID}/files`);
+  });
+
+  it('filters the index by language', async () => {
+    const fetchMock = stubFetch(fileList);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new HealthClient('').listWorkspaceFiles(WORKSPACE_ID, 'go', 50);
+
+    const { url } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/workspaces/${WORKSPACE_ID}/files?language=go&limit=50`);
+  });
+
+  it('looks up symbols by name', async () => {
+    const fetchMock = stubFetch(symbolLookup);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new HealthClient('').lookupWorkspaceSymbols(
+      WORKSPACE_ID,
+      'ListWorkspaces',
+    );
+
+    expect(result.items[0]?.kind).toBe('func');
+    expect(result.items[0]?.exported).toBe(true);
+    expect(lastCall(fetchMock).url).toBe(
+      `/api/v1/workspaces/${WORKSPACE_ID}/symbols?name=ListWorkspaces`,
+    );
+  });
+
+  it('maps 400, 403 and 404 to the server code for search', async () => {
+    for (const failure of [
+      { status: 400, code: 'invalid_query', message: 'q is required' },
+      { status: 403, code: 'permission_denied', message: 'run.execute is required' },
+      { status: 404, code: 'not_found', message: 'workspace not found' },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        stubFetch(
+          { error: { code: failure.code, message: failure.message, request_id: 'req_search' } },
+          failure.status,
+        ),
+      );
+
+      const error = await new HealthClient('')
+        .searchWorkspace(WORKSPACE_ID, 'pagination')
+        .catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(ApiError);
+      const apiError = error as ApiError;
+      expect(apiError.status).toBe(failure.status);
+      expect(apiError.code).toBe(failure.code);
+      expect(apiError.requestId).toBe('req_search');
+    }
+  });
+
+  it('maps 404 for an unknown workspace file index', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        { error: { code: 'not_found', message: 'workspace not found', request_id: 'req_files' } },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .listWorkspaceFiles(WORKSPACE_ID)
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).code).toBe('not_found');
+    expect((error as ApiError).retryable).toBe(false);
+  });
+
+  it('maps 400 for a missing symbol name', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        { error: { code: 'invalid_request', message: 'name is required', request_id: 'req_sym' } },
+        400,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .lookupWorkspaceSymbols(WORKSPACE_ID, 'ListWorkspaces')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(400);
+    expect((error as ApiError).code).toBe('invalid_request');
+  });
+});
+
+describe('HealthClient run context', () => {
+  it('reads the manifest with its provenance', async () => {
+    const fetchMock = stubFetch(contextManifest);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    await expect(client.getRunContext(RUN_ID)).resolves.toEqual(contextManifest);
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/runs/${RUN_ID}/context`);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('maps 404 when the run has no manifest yet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        { error: { code: 'not_found', message: 'run has no context', request_id: 'req_ctx_404' } },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('').getRunContext(RUN_ID).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(404);
+    expect(apiError.code).toBe('not_found');
+    expect(apiError.requestId).toBe('req_ctx_404');
+  });
+
+  it('rebuilds the context with an idempotency key, the CSRF token and the exact body', async () => {
+    setCsrfToken('csrf_rebuild');
+    const fetchMock = stubFetch(contextManifest, 201);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const body: ContextRefresh = {
+      workspace_id: WORKSPACE_ID,
+      query: 'pagination off by one in list handler',
+      token_budget: 131072,
+      expand: true,
+    };
+    const rebuilt = await new HealthClient('').refreshRunContext(RUN_ID, body, 'idem_rebuild_1');
+
+    expect(rebuilt).toEqual(contextManifest);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/runs/${RUN_ID}/context/refresh`);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(String(init.body))).toEqual({
+      workspace_id: WORKSPACE_ID,
+      query: 'pagination off by one in list handler',
+      token_budget: 131072,
+      expand: true,
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'idem_rebuild_1',
+      'X-CSRF-Token': 'csrf_rebuild',
+    });
+  });
+
+  it('maps 409 context_refresh_conflict to the server code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'context_refresh_conflict',
+            message: 'a rebuild for this run is already in progress',
+            request_id: 'req_ctx_409',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .refreshRunContext(
+        RUN_ID,
+        { workspace_id: WORKSPACE_ID, query: 'pagination' },
+        'idem_rebuild_409',
+      )
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(409);
+    expect(apiError.code).toBe('context_refresh_conflict');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 403 when the role may not rebuild the context', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'run.execute is required to rebuild a run context',
+            request_id: 'req_ctx_403',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .refreshRunContext(
+        RUN_ID,
+        { workspace_id: WORKSPACE_ID, query: 'pagination' },
+        'idem_rebuild_403',
+      )
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).code).toBe('permission_denied');
+    expect((error as ApiError).retryable).toBe(false);
   });
 });
 

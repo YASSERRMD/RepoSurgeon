@@ -5,6 +5,7 @@ import type {
   ApprovalDecision,
   ApprovalListResponse,
   AuditEventPage,
+  ContextRefresh,
   CurrentUser,
   Credential,
   CredentialCreate,
@@ -24,9 +25,14 @@ import type {
   ProjectPage,
   ProjectUpdate,
   ReadinessReport,
+  RunContextRefreshResponse,
+  RunContextResponse,
   SessionResponse,
   SystemInfo,
   ToolListResponse,
+  WorkspaceFileListResponse,
+  WorkspaceSearchResponse,
+  WorkspaceSymbolLookupResponse,
 } from './types';
 
 /** Request timeout for probe calls; readiness must stay responsive for operators. */
@@ -248,9 +254,9 @@ export interface CredentialListParams {
 
 /**
  * HealthClient is the typed browser client for the health, system, auth,
- * organization, project, member, credential, audit, tool and approval
- * endpoints. Every method maps 1:1 to an operation in api/openapi.yaml; the
- * drift check in CI fails when the contract changes without regenerating this
+ * organization, project, member, credential, audit, tool, approval, search and
+ * context endpoints. Every method maps 1:1 to an operation in api/openapi.yaml;
+ * the drift check in CI fails when the contract changes without regenerating this
  * client's types.
  */
 export class HealthClient {
@@ -547,6 +553,102 @@ export class HealthClient {
     return this.call<Approval>({
       method: 'POST',
       path: `${this.baseUrl}/api/v1/approvals/${encodeURIComponent(approvalId)}/decide`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * searchWorkspace searches file contents; a `file:` prefix searches paths.
+   * Hits carry line ranges so the evidence a reviewer sees is the evidence the
+   * retriever used. The server owns the ranking and the index state, so an
+   * empty result list is the answer, never something to fill in locally.
+   */
+  searchWorkspace(
+    workspaceId: string,
+    q: string,
+    limit?: number,
+    options?: RequestOptions,
+  ): Promise<WorkspaceSearchResponse> {
+    return this.call<WorkspaceSearchResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/search${query({
+        q,
+        limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * listWorkspaceFiles lists the indexed files with their language summary and
+   * content hashes, plus the notice that repository content is untrusted data.
+   */
+  listWorkspaceFiles(
+    workspaceId: string,
+    language?: string,
+    limit?: number,
+    options?: RequestOptions,
+  ): Promise<WorkspaceFileListResponse> {
+    return this.call<WorkspaceFileListResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/files${query({
+        language,
+        limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** lookupWorkspaceSymbols finds declared symbols by name, with signatures. */
+  lookupWorkspaceSymbols(
+    workspaceId: string,
+    name: string,
+    limit?: number,
+    options?: RequestOptions,
+  ): Promise<WorkspaceSymbolLookupResponse> {
+    return this.call<WorkspaceSymbolLookupResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/symbols${query({
+        name,
+        limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getRunContext returns the manifest the run actually used, with provenance. */
+  getRunContext(runId: string, options?: RequestOptions): Promise<RunContextResponse> {
+    return this.call<RunContextResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/context`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * refreshRunContext rebuilds the context for a run inside the requested
+   * token budget and records the manifest. The budget defaults to 32768 server
+   * side; the UI never assumes the full model window. A 409 means the manifest
+   * could not be built under those constraints, and the caller must surface the
+   * server code instead of inventing a manifest.
+   */
+  refreshRunContext(
+    runId: string,
+    body: ContextRefresh,
+    key: string,
+  ): Promise<RunContextRefreshResponse> {
+    return this.call<RunContextRefreshResponse>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/context/refresh`,
       body,
       idempotencyKey: key,
     });
