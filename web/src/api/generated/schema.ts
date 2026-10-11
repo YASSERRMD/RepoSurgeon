@@ -624,6 +624,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the tool catalog with the caller's effective permissions
+         * @description Every tool carries its risk class, required permission and whether the
+         *     caller's role permits it. Tools outside this catalog do not exist.
+         */
+        get: operations["listTools"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List approval requests for the caller's organization */
+        get: operations["listApprovals"];
+        put?: never;
+        /**
+         * Request approval for a high-risk action
+         * @description Recording a request never executes the action.
+         */
+        post: operations["createApprovalRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/{approval_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a pending request
+         * @description Requires approval.decide. A request may only be decided once; a second
+         *     decision returns 409.
+         */
+        post: operations["decideApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -965,6 +1030,49 @@ export interface components {
             actor_type: "system" | "user" | "worker" | "model";
             /** Format: date-time */
             created_at: string;
+        };
+        ToolDescriptor: {
+            name: string;
+            description: string;
+            /** @enum {string} */
+            risk: "read_only" | "workspace_write" | "sandboxed_exec" | "external_side_effect";
+            permission: string;
+            /** @description Whether a human decision is always required. */
+            approval: boolean;
+            /** @description Whether the tool runs inside the isolated runner. */
+            sandboxed: boolean;
+            /** @description Whether the caller's role permits the tool. */
+            permitted: boolean;
+        };
+        Approval: {
+            id: string;
+            organization_id: string;
+            project_id?: string;
+            run_id?: string;
+            action: string;
+            reason: string;
+            /** @enum {string} */
+            state: "pending" | "approved" | "rejected" | "expired";
+            requested_by: string;
+            decided_by?: string;
+            decision_reason?: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ApprovalCreate: {
+            run_id?: string;
+            /** @description Registered tool name. */
+            action: string;
+            reason?: string;
+        };
+        ApprovalDecision: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason?: string;
         };
         Error: {
             error: {
@@ -2736,6 +2844,158 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listTools: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tool catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ToolDescriptor"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    listApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approval requests, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Approval"][];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createApprovalRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "run_id": "run_1a2b3c4d5e6f7g8h9i0j",
+                 *       "action": "merge_pr",
+                 *       "reason": "required checks are green and the diff is reviewed"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApprovalCreate"];
+            };
+        };
+        responses: {
+            /** @description Approval request recorded as pending. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    decideApproval: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "decision": "approve",
+                 *       "reason": "verified the diff and test evidence locally"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApprovalDecision"];
+            };
+        };
+        responses: {
+            /** @description Decision recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description Request already decided or expired. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "approval_not_pending",
+                     *         "message": "approval is not pending",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

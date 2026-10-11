@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 
 import { ApiError, HealthClient, getCsrfToken, newIdempotencyKey, setCsrfToken } from './client';
 import type {
+  Approval,
+  ApprovalCreate,
+  ApprovalDecision,
   AuditEvent,
   AuditEventPage,
   CurrentUser,
@@ -17,6 +20,7 @@ import type {
   ReadinessReport,
   SessionResponse,
   SystemInfo,
+  ToolDescriptor,
 } from './types';
 
 const live: LiveStatus = { status: 'ok', uptime_seconds: 12.5 };
@@ -865,6 +869,262 @@ describe('HealthClient credentials', () => {
     expect(url).toBe(`/api/v1/credentials/${credential.id}`);
     expect(init.method).toBe('DELETE');
     expect(headersOf(init)).toMatchObject({ 'X-CSRF-Token': 'csrf_revoke' });
+  });
+});
+
+const toolDescriptors: ToolDescriptor[] = [
+  {
+    name: 'read_file',
+    description: 'Read a file inside the workspace',
+    risk: 'read_only',
+    permission: 'project.read',
+    approval: false,
+    sandboxed: false,
+    permitted: true,
+  },
+  {
+    name: 'run_tests',
+    description: 'Run the project test suite in the isolated runner',
+    risk: 'sandboxed_exec',
+    permission: 'run.execute',
+    approval: false,
+    sandboxed: true,
+    permitted: true,
+  },
+  {
+    name: 'merge_pr',
+    description: 'Merge a reviewed pull request on GitHub',
+    risk: 'external_side_effect',
+    permission: 'merge.execute',
+    approval: true,
+    sandboxed: false,
+    permitted: false,
+  },
+];
+
+/** The contract exposes catalog metadata only: nothing here is executable. */
+const TOOL_DESCRIPTOR_KEYS = [
+  'approval',
+  'description',
+  'name',
+  'permission',
+  'permitted',
+  'risk',
+  'sandboxed',
+];
+
+const pendingApproval: Approval = {
+  id: 'apr_1a2b3c4d5e6f7g8h9i0j',
+  organization_id: organization.id,
+  project_id: project.id,
+  run_id: 'run_1a2b3c4d5e6f7g8h9i0j',
+  action: 'merge_pr',
+  reason: 'required checks are green and the diff is reviewed',
+  state: 'pending',
+  requested_by: 'usr_1a2b3c4d5e6f7g8h9i0j',
+  expires_at: '2026-10-11T10:00:00Z',
+  created_at: '2026-10-10T10:00:00Z',
+  updated_at: '2026-10-10T10:00:00Z',
+};
+
+const approvedApproval: Approval = {
+  ...pendingApproval,
+  state: 'approved',
+  decided_by: 'usr_9i8h7g6f5e4d3c2b1a0z',
+  decision_reason: 'verified the diff and the test evidence',
+  updated_at: '2026-10-10T11:00:00Z',
+};
+
+describe('HealthClient tools', () => {
+  it('lists the tool catalog with catalog metadata only', async () => {
+    const fetchMock = stubFetch({ items: toolDescriptors });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    const result = await client.listTools();
+
+    expect(result.items).toHaveLength(3);
+    expect(Object.keys(result.items[0]).sort()).toEqual(TOOL_DESCRIPTOR_KEYS);
+    // A descriptor never carries an executable payload or a secret.
+    for (const item of result.items) {
+      expect(Object.hasOwn(item, 'command')).toBe(false);
+      expect(Object.hasOwn(item, 'args')).toBe(false);
+      expect(Object.hasOwn(item, 'value')).toBe(false);
+      expect(Object.hasOwn(item, 'secret')).toBe(false);
+      expect(Object.hasOwn(item, 'script')).toBe(false);
+    }
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/tools');
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('maps 403 to permission_denied for a caller without the tool permission', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'you do not have access to this organization',
+            request_id: 'req_tools',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('').listTools().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).code).toBe('permission_denied');
+    expect((error as ApiError).retryable).toBe(false);
+  });
+});
+
+describe('HealthClient approvals', () => {
+  it('lists approval requests for the organization', async () => {
+    const fetchMock = stubFetch({ items: [approvedApproval, pendingApproval], next_cursor: null });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    await expect(client.listApprovals()).resolves.toEqual({
+      items: [approvedApproval, pendingApproval],
+      next_cursor: null,
+    });
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/approvals');
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+  });
+
+  it('records a request with an Idempotency-Key and the CSRF token', async () => {
+    setCsrfToken('csrf_request');
+    const fetchMock = stubFetch(pendingApproval, 201);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const body: ApprovalCreate = {
+      run_id: 'run_1a2b3c4d5e6f7g8h9i0j',
+      action: 'merge_pr',
+      reason: 'required checks are green and the diff is reviewed',
+    };
+    const created = await new HealthClient('').createApproval(body, 'idem_approval_1');
+
+    expect(created).toEqual(pendingApproval);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe('/api/v1/approvals');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      run_id: 'run_1a2b3c4d5e6f7g8h9i0j',
+      action: 'merge_pr',
+      reason: 'required checks are green and the diff is reviewed',
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'idem_approval_1',
+      'X-CSRF-Token': 'csrf_request',
+    });
+  });
+
+  it('decides a request at the decide path and returns the server state', async () => {
+    setCsrfToken('csrf_decide');
+    const fetchMock = stubFetch(approvedApproval);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const body: ApprovalDecision = {
+      decision: 'approve',
+      reason: 'verified the diff and the test evidence',
+    };
+    const result = await new HealthClient('').decideApproval(
+      pendingApproval.id,
+      body,
+      'idem_decide',
+    );
+
+    expect(result.state).toBe('approved');
+    expect(result.decided_by).toBe('usr_9i8h7g6f5e4d3c2b1a0z');
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/approvals/${pendingApproval.id}/decide`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      decision: 'approve',
+      reason: 'verified the diff and the test evidence',
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Idempotency-Key': 'idem_decide',
+      'X-CSRF-Token': 'csrf_decide',
+    });
+  });
+
+  it('maps 409 to approval_not_pending', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'approval_not_pending',
+            message: 'approval is not pending',
+            request_id: 'req_0123456789abcdef',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decideApproval(pendingApproval.id, { decision: 'approve' }, 'idem_decide_again')
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(409);
+    expect(apiError.code).toBe('approval_not_pending');
+    expect(apiError.message).toBe('approval is not pending');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 403 to permission_denied when the role cannot decide', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'approval.decide is required to decide a request',
+            request_id: 'req_decide_403',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decideApproval(pendingApproval.id, { decision: 'reject' }, 'idem_decide_403')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).code).toBe('permission_denied');
+    expect((error as ApiError).retryable).toBe(false);
+  });
+
+  it('maps 404 to not_found for an unknown approval', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        { error: { code: 'not_found', message: 'approval not found', request_id: 'req_404' } },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decideApproval('apr_missing', { decision: 'approve' }, 'idem_decide_404')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).requestId).toBe('req_404');
   });
 });
 

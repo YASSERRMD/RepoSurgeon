@@ -1,5 +1,9 @@
 import type {
   ApiErrorBody,
+  Approval,
+  ApprovalCreate,
+  ApprovalDecision,
+  ApprovalListResponse,
   AuditEventPage,
   CurrentUser,
   Credential,
@@ -22,6 +26,7 @@ import type {
   ReadinessReport,
   SessionResponse,
   SystemInfo,
+  ToolListResponse,
 } from './types';
 
 /** Request timeout for probe calls; readiness must stay responsive for operators. */
@@ -243,9 +248,10 @@ export interface CredentialListParams {
 
 /**
  * HealthClient is the typed browser client for the health, system, auth,
- * organization, project, member, credential and audit endpoints. Every method
- * maps 1:1 to an operation in api/openapi.yaml; the drift check in CI fails when
- * the contract changes without regenerating this client's types.
+ * organization, project, member, credential, audit, tool and approval
+ * endpoints. Every method maps 1:1 to an operation in api/openapi.yaml; the
+ * drift check in CI fails when the contract changes without regenerating this
+ * client's types.
  */
 export class HealthClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -493,6 +499,56 @@ export class HealthClient {
     return this.callEmpty({
       method: 'DELETE',
       path: `${this.baseUrl}/api/v1/credentials/${encodeURIComponent(credentialId)}`,
+    });
+  }
+
+  /**
+   * listTools returns the tool catalog for the active organization. A
+   * descriptor is catalog metadata only — risk, permission and sandbox flags —
+   * so nothing here can ever be mistaken for something to execute.
+   */
+  listTools(options?: RequestOptions): Promise<ToolListResponse> {
+    return this.call<ToolListResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/tools`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** listApprovals returns the organization's requests, newest first. */
+  listApprovals(options?: RequestOptions): Promise<ApprovalListResponse> {
+    return this.call<ApprovalListResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/approvals`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** createApproval records a request; it never executes the action. */
+  createApproval(body: ApprovalCreate, key: string): Promise<Approval> {
+    return this.call<Approval>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/approvals`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * decideApproval posts the human decision. The server owns the resulting
+   * state: a request that was already decided or expired answers 409 with
+   * `approval_not_pending`, which the caller must surface rather than retry.
+   */
+  decideApproval(approvalId: string, body: ApprovalDecision, key: string): Promise<Approval> {
+    return this.call<Approval>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/approvals/${encodeURIComponent(approvalId)}/decide`,
+      body,
+      idempotencyKey: key,
     });
   }
 }
