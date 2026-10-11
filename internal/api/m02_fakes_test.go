@@ -226,7 +226,23 @@ func (f *fakeMembers) RoleFor(_ context.Context, organizationID, userID string) 
 	return role, nil
 }
 
-type fakeOrgs struct{}
+type fakeOrgs struct {
+	// userOrgs maps a user id to the organizations they belong to; the first
+	// entry becomes the subject's active organization.
+	userOrgs map[string][]domain.OrganizationWithRole
+}
+
+// withUserOrg wires a user to a specific set of organizations.
+func (f *fakeOrgs) withUserOrg(userID, orgID string) *fakeOrgs {
+	if f.userOrgs == nil {
+		f.userOrgs = map[string][]domain.OrganizationWithRole{}
+	}
+	f.userOrgs[userID] = append(f.userOrgs[userID], domain.OrganizationWithRole{
+		Organization: domain.Organization{ID: orgID, Name: "Org " + orgID, Slug: orgID},
+		Role:         domain.RoleOwner,
+	})
+	return f
+}
 
 func (fakeOrgs) Create(context.Context, domain.Organization, string, string) error { return nil }
 func (fakeOrgs) Get(context.Context, string) (domain.Organization, error) {
@@ -235,7 +251,10 @@ func (fakeOrgs) Get(context.Context, string) (domain.Organization, error) {
 func (fakeOrgs) GetBySlug(context.Context, string) (domain.Organization, error) {
 	return domain.Organization{}, domain.ErrNotFound
 }
-func (fakeOrgs) ListForUser(_ context.Context, _ string, _ int, _ string) (domain.Page[domain.OrganizationWithRole], error) {
+func (f fakeOrgs) ListForUser(_ context.Context, userID string, _ int, _ string) (domain.Page[domain.OrganizationWithRole], error) {
+	if orgs, ok := f.userOrgs[userID]; ok {
+		return domain.Page[domain.OrganizationWithRole]{Items: orgs}, nil
+	}
 	return domain.Page[domain.OrganizationWithRole]{Items: []domain.OrganizationWithRole{{Organization: domain.Organization{ID: "org_1", Name: "Acme", Slug: "acme"}, Role: domain.RoleOwner}}}, nil
 }
 func (fakeOrgs) Membership(_ context.Context, organizationID, userID string) (string, error) {
@@ -304,6 +323,8 @@ func (f *fakeCredentials) MarkVerified(context.Context, string, string) error { 
 
 type m02Harness struct {
 	handler     http.Handler
+	fakeRuns    *fakeRunsStore
+	fakeQueue   *fakeTaskQueue
 	sessions    *fakeSessions
 	identities  *fakeIdentities
 	members     *fakeMembers
