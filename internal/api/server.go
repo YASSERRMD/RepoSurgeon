@@ -36,6 +36,8 @@ type Options struct {
 	Auth *authServices
 	// Encryptor seals provider credentials.
 	Encryptor *secrets.Encryptor
+	// Gateway is the M03 model provider surface; nil disables its routes.
+	Gateway   *ModelGateway
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -51,6 +53,7 @@ type Server struct {
 	directory SubjectDirectory
 	auth      *authServices
 	secrets   *secrets.Encryptor
+	gateway   *ModelGateway
 	log       *slog.Logger
 	version   string
 	gitCommit string
@@ -94,6 +97,7 @@ func NewServer(opts Options) (*Server, error) {
 		directory: opts.SubjectDirectory,
 		auth:      opts.Auth,
 		secrets:   opts.Encryptor,
+		gateway:   opts.Gateway,
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
 		gitCommit: orDefault(opts.GitCommit, "none"),
@@ -209,6 +213,10 @@ func (s *Server) registerRoutes(router *Router) {
 	router.Handle(http.MethodGet, "/api/v1/projects/{project_id}", s.handleGetProject)
 	router.Handle(http.MethodPatch, "/api/v1/projects/{project_id}", s.handleUpdateProject)
 	router.Handle(http.MethodGet, "/api/v1/audit", s.handleListAuditEvents)
+	if s.gateway != nil {
+		router.Handle(http.MethodGet, "/api/v1/model/provider", s.handleModelStatus)
+		router.Handle(http.MethodPost, "/api/v1/model/probe", s.handleModelProbe)
+	}
 	if s.auth == nil {
 		return
 	}

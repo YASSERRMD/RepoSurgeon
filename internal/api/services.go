@@ -13,6 +13,7 @@ import (
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/domain"
 	"github.com/YASSERRMD/RepoSurgeon/internal/ids"
+	"github.com/YASSERRMD/RepoSurgeon/internal/model"
 	"github.com/YASSERRMD/RepoSurgeon/internal/redact"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
 )
@@ -162,9 +163,14 @@ func conflictError(err error) *Error {
 	return &Error{Status: http.StatusConflict, Code: "conflict", Message: err.Error()}
 }
 
-// writeDomainError translates store errors onto HTTP responses. Unexpected
-// errors always collapse to a generic 500 with the reason logged, never sent.
+// writeDomainError translates store and provider errors onto HTTP responses.
+// Unexpected errors always collapse to a generic 500 with the reason logged,
+// never sent.
 func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
+	if providerErr := providerErrorFor(err); providerErr != nil {
+		WriteError(w, r, providerErr, nil)
+		return
+	}
 	switch {
 	case domain.IsNotFound(err):
 		WriteError(w, r, ErrNotFound, nil)
@@ -285,6 +291,41 @@ func idempotencyKeyFor(w http.ResponseWriter, r *http.Request) (string, bool) {
 func requestFingerprint(body []byte) string {
 	sum := sha256.Sum256(body)
 	return base64.RawURLEncoding.EncodeToString(sum[:12])
+}
+
+// providerErrorFor maps a model provider failure onto a gateway status.
+func providerErrorFor(err error) *Error {
+	switch {
+	case isModelError(err, model.ErrProviderRateLimit):
+		return &Error{
+			Status:  http.StatusTooManyRequests,
+			Code:    "provider_rate_limit",
+			Message: "the model provider is rate limiting this workspace",
+		}
+	case isModelError(err, model.ErrProviderTimeout):
+		return &Error{
+			Status:  http.StatusGatewayTimeout,
+			Code:    "provider_timeout",
+			Message: "the model provider timed out",
+		}
+	case isModelError(err, model.ErrProviderServer):
+		return &Error{
+			Status:  http.StatusBadGateway,
+			Code:    "provider_error",
+			Message: "the model provider reported a server error",
+		}
+	case isModelError(err, model.ErrProviderResponse), isModelError(err, model.ErrProviderTransport):
+		return &Error{
+			Status:  http.StatusBadGateway,
+			Code:    "provider_error",
+			Message: "the model provider response could not be processed",
+		}
+	}
+	return nil
+}
+
+func isModelError(err, target error) bool {
+	return errors.Is(err, target)
 }
 
 func newOrganizationID() string { return ids.MustNew("org") }

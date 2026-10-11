@@ -343,6 +343,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/model/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model provider configuration and readiness
+         * @description Reports the configured provider, model, base URL and whether a live key
+         *     is present. The key itself is never returned.
+         */
+        get: operations["getModelProvider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a minimal completion to the provider
+         * @description The only endpoint that spends provider budget. Requires
+         *     credential.admin and returns the measured latency and token usage, or a
+         *     mapped provider failure. The prompt is fixed server-side and never
+         *     includes repository content.
+         */
+        post: operations["probeModelProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -542,6 +586,29 @@ export interface components {
         };
         CredentialRotate: {
             value: string;
+        };
+        ModelProviderStatus: {
+            /** @description Whether a live provider client is wired. */
+            configured: boolean;
+            provider: string;
+            model: string;
+            base_url: string;
+            /** @enum {string} */
+            reasoning_effort: "low" | "medium" | "high";
+            /** @description Whether a provider key is present. The key is never returned. */
+            key_configured: boolean;
+        };
+        ModelProbeResult: {
+            provider: string;
+            model: string;
+            latency_ms: number;
+            usage: {
+                prompt_tokens: number;
+                cached_tokens?: number;
+                completion_tokens: number;
+                total_tokens: number;
+            };
+            finish_reason?: string;
         };
         Error: {
             error: {
@@ -1546,6 +1613,149 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getModelProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "configured": true,
+                     *       "provider": "stepfun",
+                     *       "model": "step-5-preview",
+                     *       "base_url": "https://api.stepfun.ai/v1",
+                     *       "reasoning_effort": "medium",
+                     *       "key_configured": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelProviderStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    probeModelProvider: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "provider": "stepfun",
+                     *       "model": "step-5-preview",
+                     *       "latency_ms": 812,
+                     *       "usage": {
+                     *         "prompt_tokens": 9,
+                     *         "cached_tokens": 0,
+                     *         "completion_tokens": 1,
+                     *         "total_tokens": 10
+                     *       },
+                     *       "finish_reason": "stop"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelProbeResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            /** @description Provider is rate limiting this workspace. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "provider_rate_limit",
+                     *         "message": "the model provider is rate limiting this workspace",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Provider error or malformed response. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "provider_error",
+                     *         "message": "the model provider reported a server error",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No provider key configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "provider_not_configured",
+                     *         "message": "STEPFUN_API_KEY is not configured on this server",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Provider timed out. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "provider_timeout",
+                     *         "message": "the model provider timed out",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }
