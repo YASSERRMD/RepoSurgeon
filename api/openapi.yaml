@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.3.0
+  version: 0.4.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -44,6 +44,8 @@ tags:
     description: Workspaces inside an organization
   - name: audit
     description: Append-only activity trail
+  - name: model
+    description: Step 5 Preview model gateway
 
 paths:
   /health/live:
@@ -744,6 +746,112 @@ paths:
           $ref: '#/components/responses/NotFound'
 
 
+  /api/v1/model/provider:
+    get:
+      operationId: getModelProvider
+      summary: Model provider configuration and readiness
+      description: |
+        Reports the configured provider, model, base URL and whether a live key
+        is present. The key itself is never returned.
+      tags: [model]
+      responses:
+        '200':
+          description: Provider configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelProviderStatus'
+              example:
+                configured: true
+                provider: stepfun
+                model: step-5-preview
+                base_url: https://api.stepfun.ai/v1
+                reasoning_effort: medium
+                key_configured: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /api/v1/model/probe:
+    post:
+      operationId: probeModelProvider
+      summary: Send a minimal completion to the provider
+      description: |
+        The only endpoint that spends provider budget. Requires
+        credential.admin and returns the measured latency and token usage, or a
+        mapped provider failure. The prompt is fixed server-side and never
+        includes repository content.
+      tags: [model]
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '200':
+          description: Provider answered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelProbeResult'
+              example:
+                provider: stepfun
+                model: step-5-preview
+                latency_ms: 812
+                usage:
+                  prompt_tokens: 9
+                  cached_tokens: 0
+                  completion_tokens: 1
+                  total_tokens: 10
+                finish_reason: stop
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '429':
+          description: Provider is rate limiting this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: provider_rate_limit
+                  message: the model provider is rate limiting this workspace
+                  request_id: req_0123456789abcdef
+        '502':
+          description: Provider error or malformed response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: provider_error
+                  message: the model provider reported a server error
+                  request_id: req_0123456789abcdef
+        '503':
+          description: No provider key configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: provider_not_configured
+                  message: STEPFUN_API_KEY is not configured on this server
+                  request_id: req_0123456789abcdef
+        '504':
+          description: Provider timed out.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: provider_timeout
+                  message: the model provider timed out
+                  request_id: req_0123456789abcdef
+
+
 components:
   schemas:
     LiveStatus:
@@ -1183,6 +1291,51 @@ components:
           minLength: 8
           maxLength: 4096
           writeOnly: true
+
+    ModelProviderStatus:
+      type: object
+      required: [configured, provider, model, base_url, reasoning_effort, key_configured]
+      properties:
+        configured:
+          type: boolean
+          description: Whether a live provider client is wired.
+        provider:
+          type: string
+        model:
+          type: string
+        base_url:
+          type: string
+        reasoning_effort:
+          type: string
+          enum: [low, medium, high]
+        key_configured:
+          type: boolean
+          description: Whether a provider key is present. The key is never returned.
+
+    ModelProbeResult:
+      type: object
+      required: [provider, model, latency_ms, usage]
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+        latency_ms:
+          type: integer
+        usage:
+          type: object
+          required: [prompt_tokens, completion_tokens, total_tokens]
+          properties:
+            prompt_tokens:
+              type: integer
+            cached_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+        finish_reason:
+          type: string
 
     Error:
       type: object
