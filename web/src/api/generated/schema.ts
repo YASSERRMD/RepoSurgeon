@@ -793,6 +793,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get the latest plan revision for a run */
+        get: operations["getPlan"];
+        put?: never;
+        /**
+         * Submit a typed plan for a run
+         * @description The plan is validated and verified against the repository index before
+         *     it is stored. Plans citing files that do not exist are rejected with
+         *     422. High-risk and security plans are stored as `awaiting_approval`.
+         */
+        post: operations["savePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/plan/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a plan revision
+         * @description Requires approval.decide. A revision can only be decided once; a new
+         *     revision supersedes the previous one and invalidates its approvals.
+         */
+        post: operations["decidePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1238,6 +1286,77 @@ export interface components {
             reason: string;
             token_estimate: number;
             sha256: string;
+        };
+        PlanSubmission: {
+            base_sha: string;
+            context_sha256?: string;
+            plan: components["schemas"]["Plan"];
+        };
+        Plan: {
+            /** @enum {string} */
+            kind: "bug" | "feature" | "refactor" | "security";
+            /** @enum {string} */
+            risk: "low" | "medium" | "high";
+            summary: string;
+            base_sha: string;
+            hypotheses: {
+                statement: string;
+                evidence: string[];
+            }[];
+            nodes: components["schemas"]["PlanNode"][];
+            acceptance: components["schemas"]["AcceptanceCriterion"][];
+            out_of_scope?: string[];
+            assumptions?: string[];
+        };
+        PlanNode: {
+            key: string;
+            title: string;
+            /** @enum {string} */
+            kind: "investigate" | "edit" | "test" | "verify" | "review";
+            /** @description Repository-relative path; required for edit nodes. */
+            path?: string;
+            line_hint?: number;
+            prerequisites?: string[];
+            evidence?: string[];
+        };
+        AcceptanceCriterion: {
+            key: string;
+            description: string;
+            /** @description Command or check that proves the criterion. */
+            verification?: string;
+        };
+        PlanView: {
+            id: string;
+            run_id: string;
+            revision: number;
+            kind: string;
+            risk: string;
+            summary: string;
+            /** @enum {string} */
+            status: "draft" | "awaiting_approval" | "approved" | "rejected" | "superseded";
+            nodes: components["schemas"]["PlanNode"][];
+            acceptance: components["schemas"]["AcceptanceCriterion"][];
+            findings: {
+                /** @enum {string} */
+                severity: "error" | "warning";
+                code: string;
+                message: string;
+            }[];
+            approvals?: {
+                revision: number;
+                actor_id: string;
+                /** @enum {string} */
+                decision: "approved" | "rejected";
+                reason?: string;
+                created_at: string;
+            }[];
+            created_at: string;
+        };
+        PlanDecision: {
+            revision: number;
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason?: string;
         };
         Error: {
             error: {
@@ -3334,6 +3453,220 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest plan revision with findings and approvals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            /** @description No plan exists for this run. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    savePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "base_sha": "9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012",
+                 *       "context_sha256": "4f2a1b3c5d6e7f8a9b0c",
+                 *       "plan": {
+                 *         "kind": "bug",
+                 *         "risk": "high",
+                 *         "summary": "Fix the pagination off-by-one in the list handler",
+                 *         "base_sha": "9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012",
+                 *         "hypotheses": [
+                 *           {
+                 *             "statement": "The limit is incremented before the offset",
+                 *             "evidence": [
+                 *               "internal/api/list.go:120"
+                 *             ]
+                 *           }
+                 *         ],
+                 *         "nodes": [
+                 *           {
+                 *             "key": "investigate",
+                 *             "title": "Confirm the off-by-one",
+                 *             "kind": "investigate",
+                 *             "evidence": [
+                 *               "internal/api/list.go:120"
+                 *             ]
+                 *           },
+                 *           {
+                 *             "key": "fix",
+                 *             "title": "Bound the limit before offset",
+                 *             "kind": "edit",
+                 *             "path": "internal/api/list.go",
+                 *             "prerequisites": [
+                 *               "investigate"
+                 *             ],
+                 *             "evidence": [
+                 *               "internal/api/list.go:120"
+                 *             ]
+                 *           },
+                 *           {
+                 *             "key": "test",
+                 *             "title": "Add a regression test",
+                 *             "kind": "test",
+                 *             "prerequisites": [
+                 *               "fix"
+                 *             ]
+                 *           }
+                 *         ],
+                 *         "acceptance": [
+                 *           {
+                 *             "key": "ac1",
+                 *             "description": "A page of 10 never returns 11 rows",
+                 *             "verification": "go test ./internal/api/..."
+                 *           }
+                 *         ],
+                 *         "out_of_scope": [
+                 *           "UI pagination controls"
+                 *         ],
+                 *         "assumptions": [
+                 *           "The store returns rows in insertion order"
+                 *         ]
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanSubmission"];
+            };
+        };
+        responses: {
+            /** @description Plan stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanView"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description Verification failed; referenced files are missing or the plan is not actionable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_verification_failed",
+                     *         "message": "plan references \"ghost.go\" which is not in the indexed workspace",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    decidePlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "revision": 1,
+                 *       "decision": "approve",
+                 *       "reason": "verified the diff and test evidence locally"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanDecision"];
+            };
+        };
+        responses: {
+            /** @description Decision recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanView"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            /** @description Revision mismatch or already decided. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_conflict",
+                     *         "message": "plan revision already decided",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }
