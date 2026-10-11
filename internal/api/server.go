@@ -45,8 +45,10 @@ type Options struct {
 	// Workspaces is the M05 workspace manager; nil disables its routes.
 	Workspaces *gitworkspace.Manager
 	// Runs and Queue carry the M06 durable run state machine.
-	Runs      RunScheduler
-	Queue     TaskQueueService
+	Runs  RunScheduler
+	Queue TaskQueueService
+	// Tools exposes the M07 catalog, policy and approval gateway.
+	Tools     *ToolService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -67,12 +69,17 @@ type Server struct {
 	workspaces *gitworkspace.Manager
 	runs       RunScheduler
 	queue      TaskQueueService
-	log        *slog.Logger
-	version    string
-	gitCommit  string
-	buildTime  string
-	startedAt  time.Time
-	checker    *health.Checker
+	tools      *ToolService
+
+	// permissionResolver resolves the caller's permissions; it is replaced in
+	// tests.
+	permissionResolver func(ctx context.Context, session sessionSubject) []string
+	log                *slog.Logger
+	version            string
+	gitCommit          string
+	buildTime          string
+	startedAt          time.Time
+	checker            *health.Checker
 }
 
 // NewServer validates options and returns a ready server.
@@ -115,11 +122,13 @@ func NewServer(opts Options) (*Server, error) {
 		workspaces: opts.Workspaces,
 		runs:       opts.Runs,
 		queue:      opts.Queue,
-		log:        log,
-		version:    orDefault(opts.Version, "dev"),
-		gitCommit:  orDefault(opts.GitCommit, "none"),
-		buildTime:  orDefault(opts.BuildTime, "unknown"),
-		startedAt:  time.Now().UTC(),
+		tools:      opts.Tools,
+
+		log:       log,
+		version:   orDefault(opts.Version, "dev"),
+		gitCommit: orDefault(opts.GitCommit, "none"),
+		buildTime: orDefault(opts.BuildTime, "unknown"),
+		startedAt: time.Now().UTC(),
 	}
 	s.checker = &health.Checker{
 		DB:                s.db,
@@ -244,6 +253,22 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/workspaces", s.handleCreateWorkspace)
 		router.Handle(http.MethodDelete, "/api/v1/workspaces/{workspace_id}", s.handleDestroyWorkspace)
 		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/tree", s.handleWorkspaceTree)
+	}
+	s.permissionResolver = func(ctx context.Context, session sessionSubject) []string {
+		if s.auth == nil || s.auth.members == nil {
+			return nil
+		}
+		granted, err := s.auth.members.PermissionsFor(ctx, session.OrganizationID, session.UserID)
+		if err != nil {
+			return nil
+		}
+		return granted
+	}
+	if s.tools != nil {
+		router.Handle(http.MethodGet, "/api/v1/tools", s.handleListTools)
+		router.Handle(http.MethodGet, "/api/v1/approvals", s.handleListApprovals)
+		router.Handle(http.MethodPost, "/api/v1/approvals", s.handleCreateApprovalRequest)
+		router.Handle(http.MethodPost, "/api/v1/approvals/{approval_id}/decide", s.handleDecideApproval)
 	}
 	if s.runs != nil && s.queue != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs", s.handleCreateRun)

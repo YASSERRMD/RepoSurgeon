@@ -172,6 +172,14 @@ func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, providerErr, nil)
 		return
 	}
+	if status := approvalErrorStatus(err); status != http.StatusInternalServerError {
+		WriteError(w, r, &Error{
+			Status:  status,
+			Code:    approvalErrorCode(err),
+			Message: err.Error(),
+		}, nil)
+		return
+	}
 	if errors.Is(err, agent.ErrRunNotFound) {
 		WriteError(w, r, ErrNotFound, nil)
 		return
