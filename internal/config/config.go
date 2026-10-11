@@ -125,6 +125,9 @@ type Config struct {
 	GitHubAPIBaseURL string
 	// GitHubWebhookSecret verifies webhook signatures; it is a secret.
 	GitHubWebhookSecret string
+
+	// WorkspaceRoot is the directory holding pinned checkouts and worktrees.
+	WorkspaceRoot string
 }
 
 // ModelConfig is the model-provider slice of the configuration.
@@ -277,6 +280,7 @@ func loadCommon(lookup func(string) (string, bool), opts LoadOptions) (*Config, 
 	cfg.GitHubAppKeyPath = get("GITHUB_APP_PRIVATE_KEY_PATH")
 	cfg.GitHubAPIBaseURL = firstNonEmpty(get("GITHUB_API_BASE_URL"), "https://api.github.com")
 	cfg.GitHubWebhookSecret = get("GITHUB_WEBHOOK_SECRET")
+	cfg.WorkspaceRoot = firstNonEmpty(get("RS_WORKSPACE_ROOT"), "./workspaces")
 	if cfg.CredentialKEK == "" && opts.RequireCredentialKey && !env.IsTest() {
 		require("RS_CREDENTIAL_KEK")
 	}

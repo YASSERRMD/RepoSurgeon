@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
+	"github.com/YASSERRMD/RepoSurgeon/internal/gitworkspace"
 	"github.com/YASSERRMD/RepoSurgeon/internal/health"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
@@ -41,29 +42,32 @@ type Options struct {
 	// GitHubApp carries the M04 GitHub adapter and webhook verifier; nil
 	// disables the GitHub routes.
 	GitHubApp *GitHubServices
-	Logger    *slog.Logger
-	Version   string
-	GitCommit string
-	BuildTime string
+	// Workspaces is the M05 workspace manager; nil disables its routes.
+	Workspaces *gitworkspace.Manager
+	Logger     *slog.Logger
+	Version    string
+	GitCommit  string
+	BuildTime  string
 }
 
 // Server holds the dependencies shared by every route.
 type Server struct {
-	cfg       *config.Config
-	db        health.Database
-	pendingFn func(ctx context.Context) ([]migrations.Migration, error)
-	services  *Services
-	directory SubjectDirectory
-	auth      *authServices
-	secrets   *secrets.Encryptor
-	gateway   *ModelGateway
-	githubApp *GitHubServices
-	log       *slog.Logger
-	version   string
-	gitCommit string
-	buildTime string
-	startedAt time.Time
-	checker   *health.Checker
+	cfg        *config.Config
+	db         health.Database
+	pendingFn  func(ctx context.Context) ([]migrations.Migration, error)
+	services   *Services
+	directory  SubjectDirectory
+	auth       *authServices
+	secrets    *secrets.Encryptor
+	gateway    *ModelGateway
+	githubApp  *GitHubServices
+	workspaces *gitworkspace.Manager
+	log        *slog.Logger
+	version    string
+	gitCommit  string
+	buildTime  string
+	startedAt  time.Time
+	checker    *health.Checker
 }
 
 // NewServer validates options and returns a ready server.
@@ -94,20 +98,21 @@ func NewServer(opts Options) (*Server, error) {
 		}
 	}
 	s := &Server{
-		cfg:       opts.Config,
-		db:        opts.DB,
-		pendingFn: opts.PendingMigrations,
-		services:  opts.Services,
-		directory: opts.SubjectDirectory,
-		auth:      opts.Auth,
-		secrets:   opts.Encryptor,
-		gateway:   opts.Gateway,
-		githubApp: opts.GitHubApp,
-		log:       log,
-		version:   orDefault(opts.Version, "dev"),
-		gitCommit: orDefault(opts.GitCommit, "none"),
-		buildTime: orDefault(opts.BuildTime, "unknown"),
-		startedAt: time.Now().UTC(),
+		cfg:        opts.Config,
+		db:         opts.DB,
+		pendingFn:  opts.PendingMigrations,
+		services:   opts.Services,
+		directory:  opts.SubjectDirectory,
+		auth:       opts.Auth,
+		secrets:    opts.Encryptor,
+		gateway:    opts.Gateway,
+		githubApp:  opts.GitHubApp,
+		workspaces: opts.Workspaces,
+		log:        log,
+		version:    orDefault(opts.Version, "dev"),
+		gitCommit:  orDefault(opts.GitCommit, "none"),
+		buildTime:  orDefault(opts.BuildTime, "unknown"),
+		startedAt:  time.Now().UTC(),
 	}
 	s.checker = &health.Checker{
 		DB:                s.db,
@@ -227,6 +232,11 @@ func (s *Server) registerRoutes(router *Router) {
 	if s.gateway != nil {
 		router.Handle(http.MethodGet, "/api/v1/model/provider", s.handleModelStatus)
 		router.Handle(http.MethodPost, "/api/v1/model/probe", s.handleModelProbe)
+	}
+	if s.workspaces != nil {
+		router.Handle(http.MethodPost, "/api/v1/workspaces", s.handleCreateWorkspace)
+		router.Handle(http.MethodDelete, "/api/v1/workspaces/{workspace_id}", s.handleDestroyWorkspace)
+		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/tree", s.handleWorkspaceTree)
 	}
 	if s.githubApp != nil {
 		router.Handle(http.MethodPost, "/api/v1/github/installations/connect", s.handleConnectInstallation)

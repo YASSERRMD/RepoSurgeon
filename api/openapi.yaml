@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.5.0
+  version: 0.6.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -50,6 +50,8 @@ tags:
     description: GitHub App integration and issue import
   - name: webhooks
     description: GitHub webhook intake
+  - name: workspaces
+    description: Pinned checkouts and worktrees
 
 paths:
   /health/live:
@@ -1114,6 +1116,115 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 
+  /api/v1/workspaces:
+    post:
+      operationId: createWorkspace
+      summary: Pin a commit and clone a repository into a workspace
+      description: |
+        The base commit must be a 40-character SHA. The clone is a detached
+        checkout of that commit; the source repository is never modified.
+      tags: [workspaces]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreate'
+            example:
+              project_id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+              source_url: https://github.com/acme/billing.git
+              base_sha: 9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012
+      responses:
+        '201':
+          description: Workspace created at the pinned commit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: Clone failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: clone_failed
+                  message: the repository could not be cloned at the pinned commit
+                  request_id: req_0123456789abcdef
+        '503':
+          description: Workspace manager is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/workspaces/{workspace_id}:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: destroyWorkspace
+      summary: Remove a workspace and its worktrees
+      tags: [workspaces]
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Workspace removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/workspaces/{workspace_id}/tree:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getWorkspaceTree
+      summary: List files in a workspace checkout
+      tags: [workspaces]
+      responses:
+        '200':
+          description: Workspace file entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkspaceFile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
 components:
   schemas:
     LiveStatus:
@@ -1689,6 +1800,47 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    WorkspaceCreate:
+      type: object
+      required: [project_id, source_url, base_sha]
+      properties:
+        project_id:
+          type: string
+        source_url:
+          type: string
+          description: Repository URL the workspace clones from.
+        base_sha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+
+    Workspace:
+      type: object
+      required: [id, base_sha, source_url, default_ref, created_at]
+      properties:
+        id:
+          type: string
+        base_sha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+        source_url:
+          type: string
+        default_ref:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    WorkspaceFile:
+      type: object
+      required: [path, is_dir, size]
+      properties:
+        path:
+          type: string
+        is_dir:
+          type: boolean
+        size:
+          type: integer
 
     Error:
       type: object
