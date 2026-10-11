@@ -12,7 +12,7 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 | M02 | Authentication, authorization, secure credentials | merged, branch deleted | merged | #3 | recorded in M03 report |
 | M03 | Step 5 Preview model gateway and tool calling | merged, branch deleted | merged | #4 | recorded in M04 report |
 | M04 | GitHub integration, repository registration, issue sync | — | not started | — | — |
-| M05 | Safe repository checkout, branching, worktree management | — | not started | — | — |
+| M05 | Safe repository checkout, branching, worktree management | `milestone/m05-...` | in progress | — | — |
 | M06 | Durable agent run state machine and worker scheduling | — | not started | — | — |
 | M07 | Isolated tool execution and human approval gateway | — | not started | — | — |
 | M08 | Repository discovery, code search, long-context builder | — | not started | — | — |
