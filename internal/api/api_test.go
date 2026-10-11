@@ -152,6 +152,12 @@ func TestHealthRoutesBypassSubjectMiddleware(t *testing.T) {
 		PendingMigrations: func(context.Context) ([]migrations.Migration, error) {
 			return nil, nil
 		},
+		Services: &Services{
+			Organizations: &fakeOrganizations{},
+			Projects:      &fakeProjects{},
+			Audit:         &fakeAudit{},
+			Idempotency:   newFakeIdempotency(),
+		},
 		SubjectDirectory: fakeDirectory{},
 	})
 	if err != nil {
