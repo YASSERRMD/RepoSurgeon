@@ -44,10 +44,13 @@ type Options struct {
 	GitHubApp *GitHubServices
 	// Workspaces is the M05 workspace manager; nil disables its routes.
 	Workspaces *gitworkspace.Manager
-	Logger     *slog.Logger
-	Version    string
-	GitCommit  string
-	BuildTime  string
+	// Runs and Queue carry the M06 durable run state machine.
+	Runs      RunScheduler
+	Queue     TaskQueueService
+	Logger    *slog.Logger
+	Version   string
+	GitCommit string
+	BuildTime string
 }
 
 // Server holds the dependencies shared by every route.
@@ -62,6 +65,8 @@ type Server struct {
 	gateway    *ModelGateway
 	githubApp  *GitHubServices
 	workspaces *gitworkspace.Manager
+	runs       RunScheduler
+	queue      TaskQueueService
 	log        *slog.Logger
 	version    string
 	gitCommit  string
@@ -108,6 +113,8 @@ func NewServer(opts Options) (*Server, error) {
 		gateway:    opts.Gateway,
 		githubApp:  opts.GitHubApp,
 		workspaces: opts.Workspaces,
+		runs:       opts.Runs,
+		queue:      opts.Queue,
 		log:        log,
 		version:    orDefault(opts.Version, "dev"),
 		gitCommit:  orDefault(opts.GitCommit, "none"),
@@ -237,6 +244,13 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/workspaces", s.handleCreateWorkspace)
 		router.Handle(http.MethodDelete, "/api/v1/workspaces/{workspace_id}", s.handleDestroyWorkspace)
 		router.Handle(http.MethodGet, "/api/v1/workspaces/{workspace_id}/tree", s.handleWorkspaceTree)
+	}
+	if s.runs != nil && s.queue != nil {
+		router.Handle(http.MethodPost, "/api/v1/runs", s.handleCreateRun)
+		router.Handle(http.MethodGet, "/api/v1/runs", s.handleListRuns)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}", s.handleGetRun)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/start", s.handleStartRun)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/cancel", s.handleCancelRun)
 	}
 	if s.githubApp != nil {
 		router.Handle(http.MethodPost, "/api/v1/github/installations/connect", s.handleConnectInstallation)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/YASSERRMD/RepoSurgeon/internal/agent"
 	"github.com/YASSERRMD/RepoSurgeon/internal/domain"
 	"github.com/YASSERRMD/RepoSurgeon/internal/ids"
 	"github.com/YASSERRMD/RepoSurgeon/internal/model"
@@ -169,6 +170,20 @@ func conflictError(err error) *Error {
 func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 	if providerErr := providerErrorFor(err); providerErr != nil {
 		WriteError(w, r, providerErr, nil)
+		return
+	}
+	if errors.Is(err, agent.ErrRunNotFound) {
+		WriteError(w, r, ErrNotFound, nil)
+		return
+	}
+	if agent.IsConflict(err) {
+		var conflict *agent.ConflictError
+		_ = errors.As(err, &conflict)
+		WriteError(w, r, &Error{
+			Status:  http.StatusConflict,
+			Code:    conflict.Code,
+			Message: conflict.Message,
+		}, nil)
 		return
 	}
 	switch {
