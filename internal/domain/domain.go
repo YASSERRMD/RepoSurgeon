@@ -3,7 +3,13 @@
 // leak into this package.
 package domain
 
-import "time"
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"time"
+)
 
 // User is an authenticated principal. Email is matched case-insensitively by
 // the users_email_unique_idx partial index.
@@ -73,6 +79,40 @@ type Page[T any] struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
+// Issue is an imported GitHub issue. Body is untrusted data: it is displayed
+// and sent to models as content, never treated as instruction.
+type Issue struct {
+	ID             string    `json:"id"`
+	OrganizationID string    `json:"organization_id"`
+	ProjectID      string    `json:"project_id"`
+	RepositoryID   string    `json:"repository_id,omitempty"`
+	ExternalID     string    `json:"external_id,omitempty"`
+	Number         int64     `json:"number"`
+	Title          string    `json:"title"`
+	Body           string    `json:"body"`
+	State          string    `json:"state"`
+	BodyHash       string    `json:"body_hash"`
+	ETag           string    `json:"etag,omitempty"`
+	Labels         []string  `json:"labels"`
+	Assignees      []string  `json:"assignees"`
+	CommentsCount  int       `json:"comments_count"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// HashBody returns the sha256 fingerprint of an issue body so staleness is
+// detectable without storing a second copy.
+func HashBody(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
+// NewInstallationID returns a fresh installation binding identifier.
+func NewInstallationID() string { return "ghi_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
+// NewIssueID returns a fresh issue identifier.
+func NewIssueID() string { return "iss_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // Membership roles, enforced by the database check constraint and by the
 // policy layer.
 const (
@@ -99,4 +139,23 @@ var KnownSettings = map[string]string{
 	SettingMergeRequiresApproval: "boolean",
 	SettingModelProvider:         "string",
 	SettingModelID:               "string",
+}
+
+// uuidString returns a random UUID-shaped string without an external package.
+func uuidString() string {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		panic("domain: crypto/rand unavailable: " + err.Error())
+	}
+	raw[6] = (raw[6] & 0x0f) | 0x40
+	raw[8] = (raw[8] & 0x3f) | 0x80
+	const hexDigits = "0123456789abcdef"
+	out := make([]byte, 0, 36)
+	for i, b := range raw {
+		if i == 4 || i == 6 || i == 8 || i == 10 {
+			out = append(out, '-')
+		}
+		out = append(out, hexDigits[b>>4], hexDigits[b&0x0f])
+	}
+	return string(out)
 }

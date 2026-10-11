@@ -37,7 +37,10 @@ type Options struct {
 	// Encryptor seals provider credentials.
 	Encryptor *secrets.Encryptor
 	// Gateway is the M03 model provider surface; nil disables its routes.
-	Gateway   *ModelGateway
+	Gateway *ModelGateway
+	// GitHubApp carries the M04 GitHub adapter and webhook verifier; nil
+	// disables the GitHub routes.
+	GitHubApp *GitHubServices
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -54,6 +57,7 @@ type Server struct {
 	auth      *authServices
 	secrets   *secrets.Encryptor
 	gateway   *ModelGateway
+	githubApp *GitHubServices
 	log       *slog.Logger
 	version   string
 	gitCommit string
@@ -98,6 +102,7 @@ func NewServer(opts Options) (*Server, error) {
 		auth:      opts.Auth,
 		secrets:   opts.Encryptor,
 		gateway:   opts.Gateway,
+		githubApp: opts.GitHubApp,
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
 		gitCommit: orDefault(opts.GitCommit, "none"),
@@ -171,6 +176,12 @@ func (s *Server) Handler() http.Handler {
 			s.serveAPI(w, r, router, http.NotFoundHandler())
 			return
 		}
+		// Webhooks are server-to-server: they carry a signature instead of a
+		// session, so they bypass the session middleware.
+		if r.URL.Path == "/api/v1/webhooks/github" {
+			router.ServeHTTP(w, r)
+			return
+		}
 		// M02: authenticated surface with CSRF protection for mutations.
 		var authenticated http.Handler
 		switch r.URL.Path {
@@ -216,6 +227,13 @@ func (s *Server) registerRoutes(router *Router) {
 	if s.gateway != nil {
 		router.Handle(http.MethodGet, "/api/v1/model/provider", s.handleModelStatus)
 		router.Handle(http.MethodPost, "/api/v1/model/probe", s.handleModelProbe)
+	}
+	if s.githubApp != nil {
+		router.Handle(http.MethodPost, "/api/v1/github/installations/connect", s.handleConnectInstallation)
+		router.Handle(http.MethodGet, "/api/v1/github/repos", s.handleListGitHubRepos)
+		router.Handle(http.MethodPost, "/api/v1/issues/import", s.handleImportIssue)
+		router.Handle(http.MethodPost, "/api/v1/webhooks/github", s.handleGitHubWebhook)
+		router.Handle(http.MethodGet, "/api/v1/issues", s.handleListIssues)
 	}
 	if s.auth == nil {
 		return
