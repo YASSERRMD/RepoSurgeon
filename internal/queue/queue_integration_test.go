@@ -215,6 +215,11 @@ func TestQueueCompleteFailCancel(t *testing.T) {
 		t.Fatalf("retryable task = %+v", stored)
 	}
 
+	// The retryable task is removed so it cannot be claimed again.
+	if _, err := pool.Exec(ctx, `DELETE FROM task_queue WHERE id = $1`, retryID); err != nil {
+		t.Fatalf("cleanup retry task: %v", err)
+	}
+
 	// Cancellation stops further claiming.
 	canceled := newTask()
 	if err := queue.Cancel(ctx, canceled); err != nil {

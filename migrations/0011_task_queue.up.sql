@@ -9,7 +9,7 @@ CREATE TABLE task_queue (
     run_id           text REFERENCES runs (id) ON DELETE CASCADE,
     kind             text NOT NULL CHECK (kind IN ('run', 'sync', 'probe')),
     status           text NOT NULL
-                         CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+                         CHECK (status IN ('pending', 'running', 'completed', 'failed', 'canceled')),
     payload          jsonb NOT NULL DEFAULT '{}'::jsonb,
     attempt          integer NOT NULL DEFAULT 0,
     max_attempts     integer NOT NULL DEFAULT 5,
