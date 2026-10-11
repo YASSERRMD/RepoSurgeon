@@ -17,7 +17,9 @@ import (
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/api"
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
+	"github.com/YASSERRMD/RepoSurgeon/internal/contextbuild"
 	"github.com/YASSERRMD/RepoSurgeon/internal/gitworkspace"
+	"github.com/YASSERRMD/RepoSurgeon/internal/index"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
 	"github.com/YASSERRMD/RepoSurgeon/internal/queue"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
@@ -136,7 +138,14 @@ func run() error {
 
 	// M07: tool catalog, policy and approval gateway.
 	toolService := api.NewToolService(api.NewMemoryApprovals())
-	_ = toolService
+
+	// M08: repository index, context builder and in-memory manifest store.
+	repoIndex := index.New(nil, cfg.WorkspaceRoot)
+	contextService := api.NewContextService(
+		repoIndex,
+		contextbuild.NewBuilder(repoIndex),
+		api.NewMemoryContextStore(),
+	)
 
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
@@ -160,6 +169,8 @@ func run() error {
 		Workspaces: workspaces,
 		Runs:       runsRepo,
 		Queue:      taskQueue,
+		Tools:      toolService,
+		Context:    contextService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

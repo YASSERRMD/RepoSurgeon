@@ -111,6 +111,9 @@ func HashBody(body string) string {
 // NewRunID returns a fresh run identifier.
 func NewRunID() string { return "run_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 
+// NewContextID returns a fresh context manifest identifier.
+func NewContextID() string { return "ctx_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // NewApprovalID returns a fresh approval identifier.
 func NewApprovalID() string { return "apr_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 

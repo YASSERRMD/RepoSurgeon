@@ -107,6 +107,30 @@ describe('authGuard', () => {
     expect(useAuthStore().status).toBe('anonymous');
   });
 
+  it('protects the code search and context inspector routes', async () => {
+    const router = guardRouter(false);
+
+    await router.push('/workspaces/wsp_1a2b3c4d5e6f7g8h9i0j');
+
+    expect(router.currentRoute.value.name).toBe('login');
+    expect(router.currentRoute.value.query.next).toBe('/workspaces/wsp_1a2b3c4d5e6f7g8h9i0j');
+
+    await router.push('/runs/run_1a2b3c4d5e6f7g8h9i0j/context');
+
+    expect(router.currentRoute.value.name).toBe('login');
+    expect(router.currentRoute.value.query.next).toBe('/runs/run_1a2b3c4d5e6f7g8h9i0j/context');
+  });
+
+  it('lets a signed-in visitor open the inspector routes', async () => {
+    const router = guardRouter(true);
+
+    await router.push('/workspaces/wsp_1a2b3c4d5e6f7g8h9i0j');
+    expect(router.currentRoute.value.name).toBe('workspace-search');
+
+    await router.push('/runs/run_1a2b3c4d5e6f7g8h9i0j/context');
+    expect(router.currentRoute.value.name).toBe('context-inspector');
+  });
+
   it('lets a signed-in visitor through to the requested route', async () => {
     const router = guardRouter(true);
 

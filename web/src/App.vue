@@ -15,6 +15,8 @@ const navLinks = [
   { to: '/', label: 'Status' },
   { to: '/organizations', label: 'Organizations' },
   { to: '/projects', label: 'Projects' },
+  { to: '/workspaces', label: 'Search' },
+  { to: '/runs', label: 'Context' },
   { to: '/members', label: 'Members' },
   { to: '/credentials', label: 'Credentials' },
   { to: '/approvals', label: 'Approvals' },

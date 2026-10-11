@@ -1,6 +1,7 @@
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 
 import ApprovalsView from '@/views/ApprovalsView.vue';
+import ContextInspectorView from '@/views/ContextInspectorView.vue';
 import CredentialsView from '@/views/CredentialsView.vue';
 import HomeView from '@/views/HomeView.vue';
 import LoginView from '@/views/LoginView.vue';
@@ -9,6 +10,7 @@ import OrganizationsView from '@/views/OrganizationsView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
 import ToolsView from '@/views/ToolsView.vue';
+import WorkspaceSearchView from '@/views/WorkspaceSearchView.vue';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -70,6 +72,32 @@ export const routes: RouteRecordRaw[] = [
     name: 'project-detail',
     component: ProjectDetailView,
     meta: { title: 'Project', requiresAuth: true },
+  },
+  {
+    // The bare paths are the navigation entry points: the identifier is not
+    // known until the operator supplies it, and the view asks for it.
+    path: '/workspaces',
+    name: 'workspaces',
+    component: WorkspaceSearchView,
+    meta: { title: 'Code search', requiresAuth: true },
+  },
+  {
+    path: '/workspaces/:workspaceId',
+    name: 'workspace-search',
+    component: WorkspaceSearchView,
+    meta: { title: 'Code search', requiresAuth: true },
+  },
+  {
+    path: '/runs',
+    name: 'runs',
+    component: ContextInspectorView,
+    meta: { title: 'Context inspector', requiresAuth: true },
+  },
+  {
+    path: '/runs/:runId/context',
+    name: 'context-inspector',
+    component: ContextInspectorView,
+    meta: { title: 'Context inspector', requiresAuth: true },
   },
 ];
 
