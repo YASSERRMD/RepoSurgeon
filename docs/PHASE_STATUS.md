@@ -26,7 +26,13 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | M02 — Authentication, authorization, secure credentials | merged, branch deleted | PR #3 | `7978b22d7bc214f4c6478fb066e9b4a1ad7672b0` | `docs/milestone-reports/M02.md` |
 | M03 — Step 5 Preview model gateway and tool calling | merged, branch deleted | PR #4 | `fa289c869c48a56065cdd9a697d6809e71b11519` | `docs/milestone-reports/M03.md` |
 | M04 — GitHub integration, repo registration, issue sync | merged, branch deleted | PR #5 | recorded in M05 report | `docs/milestone-reports/M04.md` |
-| … M19 | — | not started | — | — | — |
+| M05 — Safe checkout, branching, worktree management | merged, branch deleted | PR #6 | `3112919a5dd093b104b26e0096941ec3ab3756b3` | `docs/milestone-reports/M05.md` |
+| M06 — Durable run state machine and worker scheduling | merged, branch deleted | PR #7 | `5211c937e2466ed4632ffdb59ad3f6bfa99a6197` | `docs/milestone-reports/M06.md` |
+| M07 — Isolated tool execution and human approval gateway | merged, branch deleted | PR #8 | `994a1b91d2f314c7c24e67ab7185ca033f3be3df` | `docs/milestone-reports/M07.md` |
+| M08 — Repository discovery, code search, long-context builder | merged, branch deleted | PR #9 | `0d2dca781200309523fde1e81c0db685835f5af4` | `docs/milestone-reports/M08.md` |
+| M09 — Issue investigation, plans, acceptance criteria | merged, branch deleted | PR #10 | `76592d4867c299ba842f3780139e03712bce6fe1` | `docs/milestone-reports/M09.md` |
+| M10 — Atomic code change and patch engine | `milestone/m10-atomic-code-change-and-patch-engine` | in progress | — | — | — |
+| M11–M19 | — | not started | — | — | — |
 
 ## Log
 
