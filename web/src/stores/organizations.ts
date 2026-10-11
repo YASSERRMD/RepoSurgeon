@@ -7,7 +7,7 @@ import type { Organization } from '@/api/types';
 /** localStorage key for the active organization id. No credentials are ever stored. */
 export const ACTIVE_ORGANIZATION_STORAGE_KEY = 'reposurgeon.activeOrganization';
 
-function readStoredActiveOrganization(): string | null {
+export function readStoredActiveOrganization(): string | null {
   try {
     return window.localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
   } catch {
@@ -15,7 +15,7 @@ function readStoredActiveOrganization(): string | null {
   }
 }
 
-function writeStoredActiveOrganization(id: string | null): void {
+export function writeStoredActiveOrganization(id: string | null): void {
   try {
     if (id === null) {
       window.localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
