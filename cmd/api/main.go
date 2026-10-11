@@ -134,6 +134,10 @@ func run() error {
 	runsRepo := store.NewRuns(pool)
 	taskQueue := queue.New(pool)
 
+	// M07: tool catalog, policy and approval gateway.
+	toolService := api.NewToolService(api.NewMemoryApprovals())
+	_ = toolService
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,

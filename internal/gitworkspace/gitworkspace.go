@@ -451,3 +451,21 @@ func ListFiles(root string) ([]FileEntry, error) {
 	}
 	return entries, nil
 }
+
+// RunGit executes a git command inside dir with a bounded timeout and output.
+// It is used by read-only tools; every argument is supplied by RepoSurgeon.
+func (m *Manager) RunGit(ctx context.Context, args ...string) (string, error) {
+	return m.runGit(ctx, "", args)
+}
+
+// RunGitIn runs git inside an arbitrary directory under the manager's control.
+func (m *Manager) RunGitIn(ctx context.Context, dir string, args ...string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(abs, m.root+string(filepath.Separator)) && abs != m.root {
+		return "", ErrPathEscape
+	}
+	return m.runGit(ctx, abs, args)
+}
