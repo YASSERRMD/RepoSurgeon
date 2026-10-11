@@ -41,22 +41,43 @@ export type CredentialRotate = components['schemas']['CredentialRotate'];
 export type CredentialKind = components['schemas']['CredentialKind'];
 export type CredentialStatus = components['schemas']['CredentialStatus'];
 
+/** Tools (M07): catalog metadata only, never a command, script or secret. */
+export type ToolDescriptor = components['schemas']['ToolDescriptor'];
+export type ToolRisk = ToolDescriptor['risk'];
+
+/** Approvals (M07): a decision is recorded server-side and never inferred. */
+export type Approval = components['schemas']['Approval'];
+export type ApprovalState = Approval['state'];
+export type ApprovalCreate = components['schemas']['ApprovalCreate'];
+export type ApprovalDecision = components['schemas']['ApprovalDecision'];
+export type ApprovalDecisionChoice = ApprovalDecision['decision'];
+
 export type ReadinessStatus = ReadinessReport['status'];
 export type CheckStatus = ReadinessCheck['status'];
 export type ProjectSettings = NonNullable<ProjectUpdate['settings']>;
 
-/** Response type helpers keyed by operation id and status code. */
-type JsonOf<TPath extends keyof paths, TStatus extends number> = paths[TPath] extends {
-  responses: infer R;
-}
-  ? R extends Record<string, unknown>
-    ? TStatus extends keyof R
-      ? R[TStatus] extends { content: { 'application/json': infer T } }
+/**
+ * ResponsesOf collects the response blocks of every method declared on a path.
+ * Keys that are not operations (parameters, and the methods the generator types
+ * as `never`) contribute `never`, which drops out of the resulting union.
+ */
+type ResponsesOf<TPath extends keyof paths> = {
+  [K in keyof paths[TPath]]: paths[TPath][K] extends { responses: infer R } ? R : never;
+}[keyof paths[TPath]];
+
+/**
+ * Response type helpers keyed by path and status code. The conditional is
+ * distributive over the union of methods, so a status that only one method
+ * answers (a 201 on POST) resolves to that method's payload.
+ */
+type JsonOf<TPath extends keyof paths, TStatus extends number> =
+  ResponsesOf<TPath> extends infer R
+    ? R extends { [K in `${TStatus}`]: infer Response }
+      ? Response extends { content: { 'application/json': infer T } }
         ? T
         : never
       : never
-    : never
-  : never;
+    : never;
 
 export type LiveStatusResponse = JsonOf<'/health/live', 200>;
 export type ReadinessOkResponse = JsonOf<'/health/ready', 200>;
@@ -78,3 +99,7 @@ export type MemberUpdateResponse = JsonOf<'/api/v1/members/{membership_id}', 200
 export type CredentialListResponse = JsonOf<'/api/v1/credentials', 200>;
 export type CredentialCreateResponse = JsonOf<'/api/v1/credentials', 201>;
 export type CredentialRotateResponse = JsonOf<'/api/v1/credentials/{credential_id}/rotate', 200>;
+export type ToolListResponse = JsonOf<'/api/v1/tools', 200>;
+export type ApprovalListResponse = JsonOf<'/api/v1/approvals', 200>;
+export type ApprovalCreateResponse = JsonOf<'/api/v1/approvals', 201>;
+export type ApprovalDecisionResponse = JsonOf<'/api/v1/approvals/{approval_id}/decide', 200>;

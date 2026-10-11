@@ -111,6 +111,9 @@ func HashBody(body string) string {
 // NewRunID returns a fresh run identifier.
 func NewRunID() string { return "run_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 
+// NewApprovalID returns a fresh approval identifier.
+func NewApprovalID() string { return "apr_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // NewTaskID returns a fresh task identifier.
 func NewTaskID() string { return "tsk_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 

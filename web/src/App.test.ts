@@ -28,6 +28,10 @@ function routerStub() {
       { path: '/login', component: { template: '<div />' } },
       { path: '/organizations', component: { template: '<div />' } },
       { path: '/projects', component: { template: '<div />' } },
+      { path: '/members', component: { template: '<div />' } },
+      { path: '/credentials', component: { template: '<div />' } },
+      { path: '/approvals', component: { template: '<div />' } },
+      { path: '/tools', component: { template: '<div />' } },
       { path: '/organizations/:id', component: { template: '<div />' } },
     ],
   });
@@ -59,6 +63,8 @@ describe('App shell', () => {
       '/projects',
       '/members',
       '/credentials',
+      '/approvals',
+      '/tools',
     ]);
     await wrapper.vm.$nextTick();
   });
