@@ -17,6 +17,7 @@ import (
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/api"
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
+	"github.com/YASSERRMD/RepoSurgeon/internal/gitworkspace"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
@@ -122,6 +123,12 @@ func run() error {
 		logger.Info("github integration disabled (app credentials or webhook secret absent)")
 	}
 
+	// M05: pinned checkouts and worktrees live under a dedicated root.
+	workspaces, err := gitworkspace.New(cfg.WorkspaceRoot)
+	if err != nil {
+		return fmt.Errorf("workspace manager: %w", err)
+	}
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -138,13 +145,14 @@ func run() error {
 			Organizations: store.NewOrganizations(pool),
 			Credentials:   store.NewCredentials(pool),
 		}),
-		Encryptor: encryptor,
-		Gateway:   gateway,
-		GitHubApp: githubApp,
-		Logger:    logger,
-		Version:   version,
-		GitCommit: gitCommit,
-		BuildTime: buildTime,
+		Encryptor:  encryptor,
+		Gateway:    gateway,
+		GitHubApp:  githubApp,
+		Workspaces: workspaces,
+		Logger:     logger,
+		Version:    version,
+		GitCommit:  gitCommit,
+		BuildTime:  buildTime,
 	})
 	if err != nil {
 		return err
