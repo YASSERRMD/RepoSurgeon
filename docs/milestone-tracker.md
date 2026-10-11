@@ -14,7 +14,7 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 | M04 | GitHub integration, repository registration, issue sync | — | not started | — | — |
 | M05 | Safe repository checkout, branching, worktree management | merged, branch deleted | merged | #6 | recorded in M06 report |
 | M06 | Durable agent run state machine and worker scheduling | merged, branch deleted | merged | #7 | recorded in M07 report |
-| M07 | Isolated tool execution and human approval gateway | `milestone/m07-...` | in progress | — | — |
+| M07 | Isolated tool execution and human approval gateway | merged, branch deleted | merged | #8 | recorded in M08 report |
 | M08 | Repository discovery, code search, long-context builder | — | not started | — | — |
 | M09 | Issue investigation, plans, acceptance criteria | — | not started | — | — |
 | M10 | Atomic code change and patch engine | — | not started | — | — |
