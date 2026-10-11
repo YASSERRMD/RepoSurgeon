@@ -107,7 +107,7 @@ describe('authGuard', () => {
     expect(useAuthStore().status).toBe('anonymous');
   });
 
-  it('protects the code search and context inspector routes', async () => {
+  it('protects the code search, context and plan inspector routes', async () => {
     const router = guardRouter(false);
 
     await router.push('/workspaces/wsp_1a2b3c4d5e6f7g8h9i0j');
@@ -119,6 +119,11 @@ describe('authGuard', () => {
 
     expect(router.currentRoute.value.name).toBe('login');
     expect(router.currentRoute.value.query.next).toBe('/runs/run_1a2b3c4d5e6f7g8h9i0j/context');
+
+    await router.push('/runs/run_1a2b3c4d5e6f7g8h9i0j/plan');
+
+    expect(router.currentRoute.value.name).toBe('login');
+    expect(router.currentRoute.value.query.next).toBe('/runs/run_1a2b3c4d5e6f7g8h9i0j/plan');
   });
 
   it('lets a signed-in visitor open the inspector routes', async () => {
@@ -129,6 +134,9 @@ describe('authGuard', () => {
 
     await router.push('/runs/run_1a2b3c4d5e6f7g8h9i0j/context');
     expect(router.currentRoute.value.name).toBe('context-inspector');
+
+    await router.push('/runs/run_1a2b3c4d5e6f7g8h9i0j/plan');
+    expect(router.currentRoute.value.name).toBe('plan-inspector');
   });
 
   it('lets a signed-in visitor through to the requested route', async () => {

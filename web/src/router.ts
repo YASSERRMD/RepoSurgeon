@@ -7,6 +7,7 @@ import HomeView from '@/views/HomeView.vue';
 import LoginView from '@/views/LoginView.vue';
 import MembersView from '@/views/MembersView.vue';
 import OrganizationsView from '@/views/OrganizationsView.vue';
+import PlanView from '@/views/PlanView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
 import ToolsView from '@/views/ToolsView.vue';
@@ -98,6 +99,14 @@ export const routes: RouteRecordRaw[] = [
     name: 'context-inspector',
     component: ContextInspectorView,
     meta: { title: 'Context inspector', requiresAuth: true },
+  },
+  {
+    // The plan a run proposed is readable by any member; deciding it is gated
+    // by the approval.decide permission inside the view and by the API.
+    path: '/runs/:runId/plan',
+    name: 'plan-inspector',
+    component: PlanView,
+    meta: { title: 'Plan inspector', requiresAuth: true },
   },
 ];
 

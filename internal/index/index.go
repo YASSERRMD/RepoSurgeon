@@ -191,6 +191,9 @@ type Stats struct {
 
 const maxIndexedFileBytes = 2 << 20
 
+// queryTimeout bounds index queries.
+const queryTimeout = 5 * time.Second
+
 func (ix *Index) fileHash(ctx context.Context, workspaceID, path string) (string, bool, error) {
 	var hash string
 	err := ix.pool.QueryRow(ctx, `SELECT sha256 FROM repo_files WHERE workspace_id = $1 AND path = $2`, workspaceID, path).Scan(&hash)
@@ -613,4 +616,19 @@ func SortedByPath(paths []string) []string {
 	out := append([]string(nil), paths...)
 	sort.Strings(out)
 	return out
+}
+
+// PathExists reports whether a path is present in the workspace index.
+func (ix *Index) PathExists(path string) bool {
+	if !ix.Available() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	var exists bool
+	if err := ix.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM repo_files WHERE workspace_id = $1 AND path = $2)`,
+		ix.WorkspaceID, path).Scan(&exists); err != nil {
+		return false
+	}
+	return exists
 }

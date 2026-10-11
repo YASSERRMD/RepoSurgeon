@@ -68,6 +68,42 @@ export type ContextStrategy = ContextManifest['strategy'];
 /** The budget choices the contract enumerates; the full window is never implied. */
 export type ContextTokenBudget = NonNullable<ContextRefresh['token_budget']>;
 
+/**
+ * Plans (M09): a plan revision is what a run proposes to do, and the plan
+ * inspector renders the projection the server returns. Status, findings and
+ * approvals are never inferred in the browser: a 404 means no plan exists yet,
+ * a 409 means the revision was already decided, and a 422 means the referenced
+ * files could not be verified.
+ */
+export type Plan = components['schemas']['Plan'];
+export type PlanKind = Plan['kind'];
+export type PlanRisk = Plan['risk'];
+export type PlanNode = components['schemas']['PlanNode'];
+export type NodeKind = PlanNode['kind'];
+export type AcceptanceCriterion = components['schemas']['AcceptanceCriterion'];
+export type PlanSubmission = components['schemas']['PlanSubmission'];
+/** ContractPlanView is the documented read projection of a stored revision. */
+export type ContractPlanView = components['schemas']['PlanView'];
+export type PlanStatus = ContractPlanView['status'];
+export type PlanFinding = ContractPlanView['findings'][number];
+export type PlanFindingSeverity = PlanFinding['severity'];
+export type PlanApproval = NonNullable<ContractPlanView['approvals']>[number];
+export type PlanDecision = components['schemas']['PlanDecision'];
+export type PlanDecisionChoice = PlanDecision['decision'];
+
+/**
+ * `base_sha`, `out_of_scope` and `assumptions` travel on the PlanSubmission
+ * request, but the documented PlanView projection does not repeat them. They
+ * are declared here as optional read-through fields so the inspector shows
+ * them when a server includes them and stays silent when it does not — the
+ * client never fills them in itself.
+ */
+export type PlanView = ContractPlanView & {
+  base_sha?: string;
+  out_of_scope?: string[];
+  assumptions?: string[];
+};
+
 export type ReadinessStatus = ReadinessReport['status'];
 export type CheckStatus = ReadinessCheck['status'];
 export type ProjectSettings = NonNullable<ProjectUpdate['settings']>;
@@ -128,6 +164,9 @@ export type WorkspaceSymbolLookupResponse = JsonOf<
 >;
 export type RunContextResponse = JsonOf<'/api/v1/runs/{run_id}/context', 200>;
 export type RunContextRefreshResponse = JsonOf<'/api/v1/runs/{run_id}/context/refresh', 201>;
+export type PlanResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 200>;
+export type PlanSaveResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 201>;
+export type PlanDecisionResponse = JsonOf<'/api/v1/runs/{run_id}/plan/approve', 200>;
 
 /** LanguageSummary is one row of the per-language file counts in the index. */
 export type LanguageSummary = WorkspaceFileListResponse['languages'][number];

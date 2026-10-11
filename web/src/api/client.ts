@@ -20,6 +20,9 @@ import type {
   Organization,
   OrganizationCreate,
   OrganizationPage,
+  PlanDecision,
+  PlanSubmission,
+  PlanView,
   Project,
   ProjectCreate,
   ProjectPage,
@@ -254,10 +257,10 @@ export interface CredentialListParams {
 
 /**
  * HealthClient is the typed browser client for the health, system, auth,
- * organization, project, member, credential, audit, tool, approval, search and
- * context endpoints. Every method maps 1:1 to an operation in api/openapi.yaml;
- * the drift check in CI fails when the contract changes without regenerating this
- * client's types.
+ * organization, project, member, credential, audit, tool, approval, search,
+ * context and plan endpoints. Every method maps 1:1 to an operation in
+ * api/openapi.yaml; the drift check in CI fails when the contract changes
+ * without regenerating this client's types.
  */
 export class HealthClient {
   constructor(private readonly baseUrl: string = '') {}
@@ -649,6 +652,50 @@ export class HealthClient {
     return this.call<RunContextRefreshResponse>({
       method: 'POST',
       path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/context/refresh`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * getPlan returns the latest plan revision for a run with its findings and
+   * recorded approvals. A 404 answers `plan_not_found`: no plan has been stored
+   * for the run yet, which the caller reports instead of showing a blank plan.
+   */
+  getPlan(runId: string, options?: RequestOptions): Promise<PlanView> {
+    return this.call<PlanView>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/plan`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * savePlan stores a plan revision. The server verifies the referenced paths
+   * and answers 422 `plan_verification_failed` with the offending finding
+   * message, and 404 when the run does not exist; a refusal never produces a
+   * locally invented revision.
+   */
+  savePlan(runId: string, body: PlanSubmission, key: string): Promise<PlanView> {
+    return this.call<PlanView>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/plan`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * decidePlan records the human decision for one revision. The revision the
+   * caller sends is the one the server last reported, so a stale decision
+   * answers 409 `plan_conflict` and the caller reloads instead of guessing.
+   */
+  decidePlan(runId: string, body: PlanDecision, key: string): Promise<PlanView> {
+    return this.call<PlanView>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/plan/approve`,
       body,
       idempotencyKey: key,
     });

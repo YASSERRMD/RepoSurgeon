@@ -16,7 +16,7 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 | M06 | Durable agent run state machine and worker scheduling | merged, branch deleted | merged | #7 | recorded in M07 report |
 | M07 | Isolated tool execution and human approval gateway | merged, branch deleted | merged | #8 | recorded in M08 report |
 | M08 | Repository discovery, code search, long-context builder | merged, branch deleted | merged | #9 | recorded in M09 report |
-| M09 | Issue investigation, plans, acceptance criteria | — | not started | — | — |
+| M09 | Issue investigation, plans, acceptance criteria | merged, branch deleted | merged | #10 | recorded in M10 report |
 | M10 | Atomic code change and patch engine | — | not started | — | — |
 | M11 | Test discovery, execution, evidence collection | — | not started | — | — |
 | M12 | Iterative debugging, recovery, state reconciliation | — | not started | — | — |
