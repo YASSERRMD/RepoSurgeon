@@ -106,6 +106,34 @@ type Config struct {
 	CredentialKEK string
 	// CredentialKeyVersion is the version stamped on newly encrypted values.
 	CredentialKeyVersion int
+
+	// StepFunAPIKey is the model provider key; it is a secret and is required
+	// only when the model gateway is used.
+	StepFunAPIKey string
+	// StepFunBaseURL overrides the first-party endpoint for tests.
+	StepFunBaseURL string
+	// DefaultModelID is the default inference engine.
+	DefaultModelID string
+	// ReasoningEffort is the default deliberation level for new requests.
+	ReasoningEffort string
+}
+
+// ModelConfig is the model-provider slice of the configuration.
+type ModelConfig struct {
+	StepFunAPIKey   string
+	StepFunBaseURL  string
+	DefaultModelID  string
+	ReasoningEffort string
+}
+
+// Model returns the model provider configuration.
+func (c *Config) Model() ModelConfig {
+	return ModelConfig{
+		StepFunAPIKey:   c.StepFunAPIKey,
+		StepFunBaseURL:  c.StepFunBaseURL,
+		DefaultModelID:  c.DefaultModelID,
+		ReasoningEffort: c.ReasoningEffort,
+	}
 }
 
 // RunnerConfig is the configuration of the isolated execution trust boundary.
@@ -232,6 +260,10 @@ func loadCommon(lookup func(string) (string, bool), opts LoadOptions) (*Config, 
 		cfg.CredentialKEK = "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo="
 	}
 	cfg.CredentialKeyVersion = parseInt(get("RS_CREDENTIAL_KEY_VERSION"), 1)
+	cfg.StepFunAPIKey = get("STEPFUN_API_KEY")
+	cfg.StepFunBaseURL = firstNonEmpty(get("STEPFUN_BASE_URL"), "https://api.stepfun.ai/v1")
+	cfg.DefaultModelID = firstNonEmpty(get("DEFAULT_MODEL_ID"), "step-5-preview")
+	cfg.ReasoningEffort = firstNonEmpty(get("DEFAULT_REASONING_EFFORT"), "medium")
 	if cfg.CredentialKEK == "" && opts.RequireCredentialKey && !env.IsTest() {
 		require("RS_CREDENTIAL_KEK")
 	}

@@ -83,11 +83,23 @@ func run() error {
 	// skips building the encryptor entirely.
 	var encryptor *secrets.Encryptor
 	if !*migrateOnly {
-		encryptor, err = secrets.New(cfg.CredentialKEK, cfg.CredentialKeyVersion)
-		if err != nil {
-			return fmt.Errorf("credential encryption: %w", err)
+		built, buildErr := secrets.New(cfg.CredentialKEK, cfg.CredentialKeyVersion)
+		if buildErr != nil {
+			return fmt.Errorf("credential encryption: %w", buildErr)
 		}
+		encryptor = built
 	}
+	var gateway *api.ModelGateway
+	if built, buildErr := api.NewModelGateway(cfg.Model()); buildErr != nil {
+		logger.Warn("model gateway disabled", "err", buildErr)
+	} else {
+		gateway = built
+		logger.Info("model gateway configured",
+			"provider", "stepfun",
+			"model", cfg.DefaultModelID,
+			"key_configured", cfg.StepFunAPIKey != "")
+	}
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -105,18 +117,19 @@ func run() error {
 			Credentials:   store.NewCredentials(pool),
 		}),
 		Encryptor: encryptor,
+		Gateway:   gateway,
 		Logger:    logger,
 		Version:   version,
 		GitCommit: gitCommit,
 		BuildTime: buildTime,
 	})
-	logger.Info("services wired",
-		"m01", "organizations, projects, audit, idempotency",
-		"m02", "sessions, identities, members, credentials",
-		"credential_key_version", encryptor.KeyVersion())
 	if err != nil {
 		return err
 	}
+	logger.Info("services wired",
+		"m01", "organizations, projects, audit, idempotency",
+		"m02", "sessions, identities, members, credentials",
+		"credential_key_version", credentialKeyVersion(encryptor))
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -169,4 +182,13 @@ func newLogger(cfg *config.Config) *slog.Logger {
 		handler = slog.NewJSONHandler(os.Stderr, opts)
 	}
 	return slog.New(handler)
+}
+
+// credentialKeyVersion reports the envelope key version, or 0 when encryption
+// is disabled (migrate-only runs).
+func credentialKeyVersion(encryptor *secrets.Encryptor) int {
+	if encryptor == nil {
+		return 0
+	}
+	return encryptor.KeyVersion()
 }
