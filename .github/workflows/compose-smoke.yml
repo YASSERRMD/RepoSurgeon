@@ -17,6 +17,7 @@ jobs:
     env:
       RS_RUNNER_TOKEN: ci-smoke-token-not-a-secret
       RS_RUNNER_ALLOWED_PROGRAMS: /bin/echo,/usr/bin/seq
+      RS_CREDENTIAL_KEK: Y2ktc21va2Uta2V5LTMyYnl0ZXMtcGFkZGluZyF4eHg=
     steps:
       - uses: actions/checkout@v4
 

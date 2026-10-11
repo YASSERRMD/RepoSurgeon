@@ -59,6 +59,8 @@ services:
       RS_HTTP_ADDR: ':8080'
       RS_MIGRATE_ON_START: ${RS_MIGRATE_ON_START:-true}
       RS_CORS_ALLOWED_ORIGINS: ${RS_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      RS_CREDENTIAL_KEK: ${RS_CREDENTIAL_KEK:?set RS_CREDENTIAL_KEK in .env (see .env.example)}
+      RS_CREDENTIAL_KEY_VERSION: ${RS_CREDENTIAL_KEY_VERSION:-1}
     ports:
       - '8081:8080'
     depends_on:

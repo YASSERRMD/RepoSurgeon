@@ -61,12 +61,19 @@ type LoadOptions struct {
 	// RequireRunnerToken makes RS_RUNNER_TOKEN mandatory in non-test
 	// environments.
 	RequireRunnerToken bool
+	// RequireCredentialKey makes RS_CREDENTIAL_KEK mandatory in non-test
+	// environments. Processes that never touch provider credentials (the
+	// runner) leave it false.
+	RequireCredentialKey bool
 }
 
 // DefaultOptions returns the option set used by the API and worker.
-func DefaultOptions() LoadOptions { return LoadOptions{RequireDatabase: true} }
+func DefaultOptions() LoadOptions {
+	return LoadOptions{RequireDatabase: true, RequireCredentialKey: true}
+}
 
-// RunnerOptions returns the option set used by the isolated runner.
+// RunnerOptions returns the option set used by the isolated runner, which
+// never handles provider credentials.
 func RunnerOptions() LoadOptions { return LoadOptions{RequireRunnerToken: true} }
 
 // Config is the validated configuration for one process.
@@ -92,6 +99,13 @@ type Config struct {
 	// CORSAllowedOrigins is the explicit browser origin allowlist. Empty means
 	// same-origin only.
 	CORSAllowedOrigins []string
+
+	// CredentialKEK is the base64-encoded 256-bit key that wraps provider
+	// credentials (envelope encryption). It is a secret and is required
+	// outside the test environment.
+	CredentialKEK string
+	// CredentialKeyVersion is the version stamped on newly encrypted values.
+	CredentialKeyVersion int
 }
 
 // RunnerConfig is the configuration of the isolated execution trust boundary.
@@ -211,6 +225,16 @@ func loadCommon(lookup func(string) (string, bool), opts LoadOptions) (*Config, 
 	cfg.MigrationsDir = firstNonEmpty(get("RS_MIGRATIONS_DIR"), "migrations")
 	cfg.MigrateOnStart = parseBool(get("RS_MIGRATE_ON_START"), true)
 	cfg.CORSAllowedOrigins = splitList(get("RS_CORS_ALLOWED_ORIGINS"))
+	cfg.CredentialKEK = get("RS_CREDENTIAL_KEK")
+	if cfg.CredentialKEK == "" && env.IsTest() {
+		// Fixed development key so tests can round-trip credentials. It is
+		// rejected by secrets.New in non-test deployments.
+		cfg.CredentialKEK = "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo="
+	}
+	cfg.CredentialKeyVersion = parseInt(get("RS_CREDENTIAL_KEY_VERSION"), 1)
+	if cfg.CredentialKEK == "" && opts.RequireCredentialKey && !env.IsTest() {
+		require("RS_CREDENTIAL_KEK")
+	}
 
 	if opts.RequireRunnerToken && !env.IsTest() {
 		require("RS_RUNNER_TOKEN")
