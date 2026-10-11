@@ -353,3 +353,82 @@ describe('auth store', () => {
     expect(auth.activeOrganizationId).toBe('org_globex');
   });
 });
+
+describe('csrf token after a page reload', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rotates the session to mint a csrf token when reloading with a cookie', async () => {
+    const refreshCalls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: string): Promise<Response> => {
+        if (String(input).includes('/api/v1/me')) {
+          return Promise.resolve(new Response(JSON.stringify(profileWithOrgs()), { status: 200 }));
+        }
+        refreshCalls.push(String(input));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              user: profileWithOrgs(),
+              csrf_token: 'csrf_after_refresh',
+              expires_at: '2026-10-11T10:00:00Z',
+            }),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+
+    const store = useAuthStore();
+    await store.bootstrap();
+
+    expect(store.status).toBe('authenticated');
+    expect(refreshCalls).toHaveLength(1);
+    expect(store.permissionsFor(store.activeOrganizationId ?? '')).toContain('project.write');
+  });
+
+  it('keeps the session when rotation fails', async () => {
+    const fetchMock = vi.fn((input: string): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('/api/v1/me')) {
+        return Promise.resolve(new Response(JSON.stringify(profileWithOrgs()), { status: 200 }));
+      }
+      // Rotation fails server-side; the store must keep the session alive.
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { code: 'internal_error', message: 'boom', request_id: 'r_3' } }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = useAuthStore();
+    await store.bootstrap();
+
+    expect(store.status).toBe('authenticated');
+    expect(store.user?.email).toBe('developer@example.test');
+  });
+});
+
+function profileWithOrgs() {
+  return {
+    id: 'usr_1',
+    email: 'developer@example.test',
+    organizations: [
+      {
+        id: 'org_1',
+        name: 'Acme Engineering',
+        slug: 'acme-engineering',
+        role: 'owner',
+        permissions: ['project.read', 'project.write'],
+      },
+    ],
+  };
+}

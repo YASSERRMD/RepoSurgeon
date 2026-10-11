@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+import { signIn } from './helpers';
+
 /**
- * M01 browser journey against the composed stack: create an organization and
- * a project from the UI, reload, and confirm the data really persisted in
+ * Project workbench journey against the composed stack: create an organization
+ * and a project from the UI, reload, and confirm the data really persisted in
  * PostgreSQL. No mocks — every assertion reflects a stored record.
  */
 test.describe('project workbench', () => {
@@ -14,6 +16,9 @@ test.describe('project workbench', () => {
   test('create organization, create project, reload and filter', async ({ page, request }) => {
     const readiness = await request.get('/health/ready');
     test.skip(readiness.status() !== 200, 'stack is not ready; skipping M01 journey');
+
+    // 0. Authenticate (M02): bootstrap the first account and sign in.
+    await signIn(page, request);
 
     // 1. Create an organization; the app makes it active and opens projects.
     await page.goto('/organizations');

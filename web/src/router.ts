@@ -10,15 +10,16 @@ import ProjectsView from '@/views/ProjectsView.vue';
 import { useAuthStore } from '@/stores/auth';
 
 /**
- * Every application route requires an authenticated session. /login is the
- * only route that does not: it is where an anonymous subject lands.
+ * Application routes require an authenticated session by default. The
+ * operational status page (/) and /login are public: readiness must stay
+ * visible to operators and to the login form itself.
  */
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
     component: HomeView,
-    meta: { title: 'Operational status', requiresAuth: true },
+    meta: { title: 'Operational status', requiresAuth: false },
   },
   {
     path: '/login',

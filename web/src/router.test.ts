@@ -26,10 +26,12 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/** stubSession serves GET /me as an authenticated or an anonymous caller. */
+/** stubSession serves GET /me (and the post-reload rotation) as an
+ * authenticated or an anonymous caller. */
 function stubSession(signedIn: boolean): Mock {
   const fetchMock = vi.fn((input: string): Promise<Response> => {
-    if (String(input).includes('/api/v1/me')) {
+    const url = String(input);
+    if (url.includes('/api/v1/me')) {
       return signedIn
         ? Promise.resolve(jsonResponse(profile))
         : Promise.resolve(
@@ -45,7 +47,24 @@ function stubSession(signedIn: boolean): Mock {
             ),
           );
     }
-    return Promise.reject(new Error(`unexpected request to ${String(input)}`));
+    if (url.includes('/api/v1/auth/refresh')) {
+      // Rotation after a reload mints the CSRF token.
+      return signedIn
+        ? Promise.resolve(
+            jsonResponse({
+              user: profile,
+              csrf_token: 'csrf_after_refresh',
+              expires_at: '2026-10-11T10:00:00Z',
+            }),
+          )
+        : Promise.resolve(
+            jsonResponse(
+              { error: { code: 'unauthenticated', message: 'no session', request_id: 'r_2' } },
+              401,
+            ),
+          );
+    }
+    return Promise.reject(new Error(`unexpected request to ${url}`));
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;

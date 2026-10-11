@@ -109,12 +109,28 @@ export const useAuthStore = defineStore('auth', () => {
   /** refresh reloads the caller; any failure means the session is gone. */
   async function refresh(): Promise<void> {
     loading.value = true;
+    let profile: CurrentUser;
     try {
-      applyUser(await client.getCurrentUser());
+      profile = await client.getCurrentUser();
     } catch {
       clearSession();
-    } finally {
       loading.value = false;
+      return;
+    }
+    applyUser(profile);
+    loading.value = false;
+
+    // After a page reload the browser keeps the session cookie but has no
+    // CSRF token, so every mutation would fail. Session rotation is exempt
+    // from the CSRF check precisely for this case; it mints a fresh token. A
+    // failure here leaves the session valid.
+    if (csrfToken.value === null) {
+      try {
+        await rotateSession();
+      } catch {
+        // Convenience only: CSRF-protected mutations stay unavailable until
+        // the next successful rotation.
+      }
     }
   }
 
@@ -128,7 +144,8 @@ export const useAuthStore = defineStore('auth', () => {
       setCsrfToken(session.csrf_token);
       return session.expires_at;
     } catch (cause) {
-      clearSession();
+      // A failed rotation does not invalidate the cookie session, so the user
+      // stays signed in; only the CSRF-protected calls need another attempt.
       error.value = errorMessage(cause);
       throw cause;
     } finally {

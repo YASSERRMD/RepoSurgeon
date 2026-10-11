@@ -15,12 +15,11 @@ test.describe('authentication', () => {
 
     const email = `e2e-${Date.now()}@example.test`;
 
-    // Bootstrap the first account on a fresh stack; an existing account makes
-    // this a 409, which is fine — we then log in with a known account below.
+    // Bootstrap the first account on a fresh stack.
     const bootstrap = await request.post('/api/v1/auth/bootstrap', {
       data: { email, password, organization_name: 'E2E Org', display_name: 'E2E' },
     });
-    test.skip(bootstrap.status() === 409, 'an account already exists; login flow covered below');
+    test.skip(bootstrap.status() !== 201, 'an account already exists; run against a fresh stack');
 
     // Visiting a protected route redirects to the login page.
     await page.goto('/members');

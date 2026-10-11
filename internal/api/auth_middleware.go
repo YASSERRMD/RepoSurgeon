@@ -124,7 +124,11 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if bearerAuthenticated(r) {
+		// Bearer callers cannot be forged by a browser. Session rotation is
+		// exempt as well: a page reload leaves the browser with a cookie but
+		// no CSRF token, and refresh is how the client mints one. Logout stays
+		// protected because a token is always available by then.
+		if bearerAuthenticated(r) || r.URL.Path == "/api/v1/auth/refresh" {
 			next.ServeHTTP(w, r)
 			return
 		}
