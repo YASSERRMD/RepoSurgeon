@@ -50,7 +50,9 @@ type Options struct {
 	// Tools exposes the M07 catalog, policy and approval gateway.
 	Tools *ToolService
 	// Context exposes the M08 index, context builder and manifest store.
-	Context   *ContextService
+	Context *ContextService
+	// Plans exposes the M09 plan service.
+	Plans     *PlanService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -73,6 +75,7 @@ type Server struct {
 	queue      TaskQueueService
 	tools      *ToolService
 	context    *ContextService
+	plans      *PlanService
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -127,6 +130,7 @@ func NewServer(opts Options) (*Server, error) {
 		queue:      opts.Queue,
 		tools:      opts.Tools,
 		context:    opts.Context,
+		plans:      opts.Plans,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -281,7 +285,12 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/approvals", s.handleCreateApprovalRequest)
 		router.Handle(http.MethodPost, "/api/v1/approvals/{approval_id}/decide", s.handleDecideApproval)
 	}
-	if s.runs != nil && s.queue != nil {
+	if s.runs != nil {
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/plan", s.handleSavePlan)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/plan", s.handleGetPlan)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/plan/approve", s.handleApprovePlan)
+	}
+	if s.queue != nil {
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/context", s.handleRunContext)
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/context/refresh", s.handleRunContextRefresh)
 		router.Handle(http.MethodPost, "/api/v1/runs", s.handleCreateRun)

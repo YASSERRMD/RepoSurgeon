@@ -147,6 +147,9 @@ func run() error {
 		api.NewMemoryContextStore(),
 	)
 
+	// M09: typed plans with verification and recorded approvals.
+	planService := api.NewPlanService(api.NewMemoryPlanStore(), repoIndex)
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -171,6 +174,7 @@ func run() error {
 		Queue:      taskQueue,
 		Tools:      toolService,
 		Context:    contextService,
+		Plans:      planService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

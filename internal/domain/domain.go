@@ -111,6 +111,9 @@ func HashBody(body string) string {
 // NewRunID returns a fresh run identifier.
 func NewRunID() string { return "run_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 
+// NewPlanID returns a fresh plan identifier.
+func NewPlanID() string { return "pln_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // NewContextID returns a fresh context manifest identifier.
 func NewContextID() string { return "ctx_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 

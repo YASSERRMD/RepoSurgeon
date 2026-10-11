@@ -172,6 +172,23 @@ func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, providerErr, nil)
 		return
 	}
+	var planVerification *planError
+	if errors.As(err, &planVerification) {
+		WriteError(w, r, &Error{
+			Status:  http.StatusUnprocessableEntity,
+			Code:    "plan_verification_failed",
+			Message: planVerification.message,
+		}, nil)
+		return
+	}
+	if status := planErrorStatus(err); status != http.StatusInternalServerError {
+		WriteError(w, r, &Error{
+			Status:  status,
+			Code:    planErrorCode(err),
+			Message: err.Error(),
+		}, nil)
+		return
+	}
 	if status := approvalErrorStatus(err); status != http.StatusInternalServerError {
 		WriteError(w, r, &Error{
 			Status:  status,
