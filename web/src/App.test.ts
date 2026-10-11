@@ -65,11 +65,15 @@ describe('App shell', () => {
       '/projects',
       '/workspaces',
       '/runs',
+      '/runs',
       '/members',
       '/credentials',
       '/approvals',
       '/tools',
     ]);
+    // Both inspector entry points share the run-selection route: the plan and
+    // the context of a run are only addressable once a run id is known.
+    expect(links.map((link) => link.text())).toContain('Plan');
     await wrapper.vm.$nextTick();
   });
 

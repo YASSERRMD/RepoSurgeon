@@ -17,6 +17,10 @@ import type {
   MemberPage,
   Organization,
   OrganizationPage,
+  PlanDecision,
+  PlanNode,
+  PlanSubmission,
+  PlanView,
   Project,
   ProjectPage,
   ReadinessReport,
@@ -1448,6 +1452,402 @@ describe('HealthClient run context', () => {
     expect((error as ApiError).status).toBe(403);
     expect((error as ApiError).code).toBe('permission_denied');
     expect((error as ApiError).retryable).toBe(false);
+  });
+});
+
+const planNodes: PlanNode[] = [
+  {
+    key: 'investigate',
+    title: 'Confirm the off-by-one',
+    kind: 'investigate',
+    evidence: ['internal/api/list.go:120'],
+  },
+  {
+    key: 'fix',
+    title: 'Bound the limit before offset',
+    kind: 'edit',
+    path: 'internal/api/list.go',
+    line_hint: 120,
+    prerequisites: ['investigate'],
+    evidence: ['internal/api/list.go:120'],
+  },
+  {
+    key: 'test',
+    title: 'Add a regression test',
+    kind: 'test',
+    prerequisites: ['fix'],
+  },
+];
+
+const planView: PlanView = {
+  id: 'pln_1a2b3c4d5e6f7g8h9i0j',
+  run_id: RUN_ID,
+  revision: 1,
+  kind: 'bug',
+  risk: 'high',
+  summary: 'Fix the pagination off-by-one in the list handler',
+  status: 'awaiting_approval',
+  nodes: planNodes,
+  acceptance: [
+    {
+      key: 'ac1',
+      description: 'A page of 10 never returns 11 rows',
+      verification: 'go test ./internal/api/...',
+    },
+  ],
+  findings: [],
+  approvals: [],
+  created_at: '2026-10-10T10:05:00Z',
+};
+
+const decidedPlan: PlanView = {
+  ...planView,
+  status: 'approved',
+  approvals: [
+    {
+      revision: 1,
+      actor_id: 'usr_9i8h7g6f5e4d3c2b1a0z',
+      decision: 'approved',
+      reason: 'verified the diff and the test evidence',
+      created_at: '2026-10-10T11:00:00Z',
+    },
+  ],
+};
+
+const planSubmission: PlanSubmission = {
+  base_sha: '9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012',
+  context_sha256: '4f2a1b3c5d6e7f8a9b0c',
+  plan: {
+    kind: 'bug',
+    risk: 'high',
+    summary: 'Fix the pagination off-by-one in the list handler',
+    base_sha: '9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012',
+    hypotheses: [
+      {
+        statement: 'The limit is incremented before the offset',
+        evidence: ['internal/api/list.go:120'],
+      },
+    ],
+    nodes: planNodes,
+    acceptance: [
+      {
+        key: 'ac1',
+        description: 'A page of 10 never returns 11 rows',
+        verification: 'go test ./internal/api/...',
+      },
+    ],
+    out_of_scope: ['UI pagination controls'],
+    assumptions: ['The store returns rows in insertion order'],
+  },
+};
+
+describe('HealthClient plans', () => {
+  it('reads the latest revision with its findings as a GET without CSRF', async () => {
+    const fetchMock = stubFetch(planView);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new HealthClient('');
+    await expect(client.getPlan(RUN_ID)).resolves.toEqual(planView);
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/runs/${RUN_ID}/plan`);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+    expect(headersOf(init)['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('maps 403 when the role may not read the plan', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'project.read is required to read a plan',
+            request_id: 'req_plan_403',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('').getPlan(RUN_ID).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(403);
+    expect(apiError.code).toBe('permission_denied');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 404 plan_not_found when no plan exists for the run', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'plan_not_found',
+            message: 'no plan has been created for this run yet',
+            request_id: 'req_plan_404',
+          },
+        },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('').getPlan(RUN_ID).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(404);
+    expect(apiError.code).toBe('plan_not_found');
+    expect(apiError.requestId).toBe('req_plan_404');
+  });
+
+  it('stores a revision with an Idempotency-Key, the CSRF token and the exact body', async () => {
+    setCsrfToken('csrf_plan');
+    const fetchMock = stubFetch(planView, 201);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stored = await new HealthClient('').savePlan(RUN_ID, planSubmission, 'idem_plan_1');
+
+    expect(stored).toEqual(planView);
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/runs/${RUN_ID}/plan`);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(String(init.body))).toEqual(planSubmission);
+    expect(headersOf(init)).toMatchObject({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'idem_plan_1',
+      'X-CSRF-Token': 'csrf_plan',
+    });
+  });
+
+  it('maps 403 when the role may not store a plan', async () => {
+    setCsrfToken('csrf_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'run.execute is required to store a plan',
+            request_id: 'req_plan_save_403',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .savePlan(RUN_ID, planSubmission, 'idem_plan_403')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).code).toBe('permission_denied');
+    expect((error as ApiError).retryable).toBe(false);
+  });
+
+  it('maps 404 when the run does not exist', async () => {
+    setCsrfToken('csrf_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        { error: { code: 'not_found', message: 'run not found', request_id: 'req_plan_save_404' } },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .savePlan(RUN_ID, planSubmission, 'idem_plan_404')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).code).toBe('not_found');
+    expect((error as ApiError).requestId).toBe('req_plan_save_404');
+  });
+
+  it('maps 409 plan_conflict when a newer revision already supersedes it', async () => {
+    setCsrfToken('csrf_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'plan_conflict',
+            message: 'a newer revision supersedes this plan',
+            request_id: 'req_plan_409',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .savePlan(RUN_ID, planSubmission, 'idem_plan_409')
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(409);
+    expect(apiError.code).toBe('plan_conflict');
+    expect(apiError.message).toBe('a newer revision supersedes this plan');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 422 plan_verification_failed with the server message', async () => {
+    setCsrfToken('csrf_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'plan_verification_failed',
+            message: 'plan references "ghost.go" which is not in the indexed workspace',
+            request_id: 'req_plan_422',
+          },
+        },
+        422,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .savePlan(RUN_ID, planSubmission, 'idem_plan_422')
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(422);
+    expect(apiError.code).toBe('plan_verification_failed');
+    expect(apiError.message).toContain('ghost.go');
+    // A verification failure is the client's to fix; retrying it is not the answer.
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('decides a revision at the approve path with the key, the CSRF token and the body', async () => {
+    setCsrfToken('csrf_decide_plan');
+    const fetchMock = stubFetch(decidedPlan);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const body: PlanDecision = {
+      revision: 1,
+      decision: 'approve',
+      reason: 'verified the diff and the test evidence',
+    };
+    const result = await new HealthClient('').decidePlan(RUN_ID, body, 'idem_decide_plan');
+
+    expect(result).toEqual(decidedPlan);
+    // The status and the recorded approval come from the server's answer.
+    expect(result.status).toBe('approved');
+    expect(result.approvals?.[0]?.decision).toBe('approved');
+
+    const { url, init } = lastCall(fetchMock);
+    expect(url).toBe(`/api/v1/runs/${RUN_ID}/plan/approve`);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(String(init.body))).toEqual({
+      revision: 1,
+      decision: 'approve',
+      reason: 'verified the diff and the test evidence',
+    });
+    expect(headersOf(init)).toMatchObject({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'idem_decide_plan',
+      'X-CSRF-Token': 'csrf_decide_plan',
+    });
+  });
+
+  it('omits an empty decision reason instead of sending null', async () => {
+    setCsrfToken('csrf_decide_plan');
+    const fetchMock = stubFetch(decidedPlan);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new HealthClient('').decidePlan(
+      RUN_ID,
+      { revision: 1, decision: 'reject' },
+      'idem_reject',
+    );
+
+    const { init } = lastCall(fetchMock);
+    expect(JSON.parse(String(init.body))).toEqual({ revision: 1, decision: 'reject' });
+    expect(Object.hasOwn(JSON.parse(String(init.body)), 'reason')).toBe(false);
+  });
+
+  it('maps 409 plan_conflict when the revision was already decided', async () => {
+    setCsrfToken('csrf_decide_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'plan_conflict',
+            message: 'plan revision already decided',
+            request_id: 'req_decide_plan_409',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decidePlan(RUN_ID, { revision: 1, decision: 'approve' }, 'idem_decide_plan_409')
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(409);
+    expect(apiError.code).toBe('plan_conflict');
+    expect(apiError.retryable).toBe(false);
+  });
+
+  it('maps 403 when the role may not decide a revision', async () => {
+    setCsrfToken('csrf_decide_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'permission_denied',
+            message: 'approval.decide is required to decide a plan revision',
+            request_id: 'req_decide_plan_403',
+          },
+        },
+        403,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decidePlan(RUN_ID, { revision: 1, decision: 'reject' }, 'idem_decide_plan_403')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).code).toBe('permission_denied');
+  });
+
+  it('maps 404 when the run has no plan to decide', async () => {
+    setCsrfToken('csrf_decide_plan');
+    vi.stubGlobal(
+      'fetch',
+      stubFetch(
+        {
+          error: {
+            code: 'not_found',
+            message: 'plan not found',
+            request_id: 'req_decide_plan_404',
+          },
+        },
+        404,
+      ),
+    );
+
+    const error = await new HealthClient('')
+      .decidePlan(RUN_ID, { revision: 1, decision: 'approve' }, 'idem_decide_plan_404')
+      .catch((err: unknown) => err);
+
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).code).toBe('not_found');
+    expect((error as ApiError).requestId).toBe('req_decide_plan_404');
   });
 });
 
