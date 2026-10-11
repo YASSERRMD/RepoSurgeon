@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.8.0
+  version: 0.9.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -56,6 +56,8 @@ tags:
     description: Durable agent runs
   - name: tools
     description: Tool catalog, policy and approvals
+  - name: context
+    description: Repository index and context builder
 
 paths:
   /health/live:
@@ -1551,6 +1553,212 @@ paths:
                   request_id: req_0123456789abcdef
 
 
+  /api/v1/workspaces/{workspace_id}/search:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: searchWorkspace
+      summary: Lexical and filename search over an indexed workspace
+      description: |
+        `q` searches file contents; a `file:` prefix searches paths. Results
+        carry line ranges so evidence is exact.
+      tags: [context]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Search hits with line ranges.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace_id, query, items]
+                properties:
+                  workspace_id:
+                    type: string
+                  query:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SearchHit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/workspaces/{workspace_id}/files:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listWorkspaceFiles
+      summary: List indexed files and language summary
+      tags: [context]
+      parameters:
+        - name: language
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Indexed files with content hashes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace_id, items, languages, untrusted]
+                properties:
+                  workspace_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IndexedFile'
+                  languages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        language:
+                          type: string
+                        count:
+                          type: integer
+                  untrusted:
+                    type: string
+                    description: Notice that repository content is untrusted data.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/workspaces/{workspace_id}/symbols:
+    parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: lookupWorkspaceSymbols
+      summary: Look up symbols by name
+      tags: [context]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Symbol matches.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace_id, items]
+                properties:
+                  workspace_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SymbolHit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/context:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRunContext
+      summary: Get the built context manifest for a run
+      tags: [context]
+      responses:
+        '200':
+          description: Context manifest with provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextManifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/context/refresh:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: refreshRunContext
+      summary: Rebuild the context for a run
+      description: |
+        Re-indexes the workspace, builds context within the requested token
+        budget and records the manifest with provenance. The budget defaults
+        to 32768 tokens; the full model window is never the default.
+      tags: [context]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextRefresh'
+            example:
+              workspace_id: wsp_1a2b3c4d5e6f7g8h9i0j
+              query: pagination off by one in list handler
+              token_budget: 32768
+              expand: true
+      responses:
+        '201':
+          description: Manifest built and recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextManifest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
 components:
   schemas:
     LiveStatus:
@@ -2349,6 +2557,131 @@ components:
         reason:
           type: string
           maxLength: 2000
+
+    SearchHit:
+      type: object
+      required: [path, line, line_end, preview, match]
+      properties:
+        path:
+          type: string
+        line:
+          type: integer
+        line_end:
+          type: integer
+        preview:
+          type: string
+        match:
+          type: string
+
+    SymbolHit:
+      type: object
+      required: [path, name, kind, line, signature, exported]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [func, type, const, var, class, def, interface, other]
+        line:
+          type: integer
+        signature:
+          type: string
+        exported:
+          type: boolean
+
+    IndexedFile:
+      type: object
+      required: [path, language, size_bytes, line_count, sha256, indexed_at]
+      properties:
+        path:
+          type: string
+        language:
+          type: string
+        size_bytes:
+          type: integer
+        line_count:
+          type: integer
+        sha256:
+          type: string
+        indexed_at:
+          type: string
+          format: date-time
+
+    ContextRefresh:
+      type: object
+      required: [workspace_id, query]
+      properties:
+        workspace_id:
+          type: string
+        query:
+          type: string
+          description: Search terms used to retrieve context.
+        token_budget:
+          type: integer
+          enum: [32768, 131072, 262144]
+        expand:
+          type: boolean
+          description: Expand the manifest with additional retrieval after the first pass.
+
+    ContextManifest:
+      type: object
+      required: [id, workspace_id, query, strategy, token_budget, token_estimate, truncated, items, created_at]
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        workspace_id:
+          type: string
+        query:
+          type: string
+        strategy:
+          type: string
+          enum: [search, symbol, issue_files, expansion]
+        token_budget:
+          type: integer
+        token_estimate:
+          type: integer
+        truncated:
+          type: boolean
+        omitted_paths:
+          type: array
+          items:
+            type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextItem'
+        untrusted_notes:
+          type: array
+          items:
+            type: string
+          description: Notices stating that repository content is untrusted data.
+        created_at:
+          type: string
+          format: date-time
+
+    ContextItem:
+      type: object
+      required: [path, line_start, line_end, content, reason, token_estimate, sha256]
+      properties:
+        path:
+          type: string
+        line_start:
+          type: integer
+        line_end:
+          type: integer
+        content:
+          type: string
+        reason:
+          type: string
+          description: Why this range was retrieved.
+        token_estimate:
+          type: integer
+        sha256:
+          type: string
 
     Error:
       type: object

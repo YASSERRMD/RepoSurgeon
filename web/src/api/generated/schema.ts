@@ -689,6 +689,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Lexical and filename search over an indexed workspace
+         * @description `q` searches file contents; a `file:` prefix searches paths. Results
+         *     carry line ranges so evidence is exact.
+         */
+        get: operations["searchWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        /** List indexed files and language summary */
+        get: operations["listWorkspaceFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/symbols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        /** Look up symbols by name */
+        get: operations["lookupWorkspaceSymbols"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get the built context manifest for a run */
+        get: operations["getRunContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/context/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild the context for a run
+         * @description Re-indexes the workspace, builds context within the requested token
+         *     budget and records the manifest with provenance. The budget defaults
+         *     to 32768 tokens; the full model window is never the default.
+         */
+        post: operations["refreshRunContext"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1073,6 +1177,67 @@ export interface components {
             /** @enum {string} */
             decision: "approve" | "reject";
             reason?: string;
+        };
+        SearchHit: {
+            path: string;
+            line: number;
+            line_end: number;
+            preview: string;
+            match: string;
+        };
+        SymbolHit: {
+            path: string;
+            name: string;
+            /** @enum {string} */
+            kind: "func" | "type" | "const" | "var" | "class" | "def" | "interface" | "other";
+            line: number;
+            signature: string;
+            exported: boolean;
+        };
+        IndexedFile: {
+            path: string;
+            language: string;
+            size_bytes: number;
+            line_count: number;
+            sha256: string;
+            /** Format: date-time */
+            indexed_at: string;
+        };
+        ContextRefresh: {
+            workspace_id: string;
+            /** @description Search terms used to retrieve context. */
+            query: string;
+            /** @enum {integer} */
+            token_budget?: 32768 | 131072 | 262144;
+            /** @description Expand the manifest with additional retrieval after the first pass. */
+            expand?: boolean;
+        };
+        ContextManifest: {
+            id: string;
+            run_id?: string;
+            workspace_id: string;
+            query: string;
+            /** @enum {string} */
+            strategy: "search" | "symbol" | "issue_files" | "expansion";
+            token_budget: number;
+            token_estimate: number;
+            truncated: boolean;
+            omitted_paths?: string[];
+            items: components["schemas"]["ContextItem"][];
+            /** @description Notices stating that repository content is untrusted data. */
+            untrusted_notes?: string[];
+            /** Format: date-time */
+            created_at: string;
+        };
+        ContextItem: {
+            path: string;
+            line_start: number;
+            line_end: number;
+            content: string;
+            /** @description Why this range was retrieved. */
+            reason: string;
+            token_estimate: number;
+            sha256: string;
         };
         Error: {
             error: {
@@ -2996,6 +3161,179 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    searchWorkspace: {
+        parameters: {
+            query: {
+                q: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Search hits with line ranges. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspace_id: string;
+                        query: string;
+                        items: components["schemas"]["SearchHit"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listWorkspaceFiles: {
+        parameters: {
+            query?: {
+                language?: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Indexed files with content hashes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspace_id: string;
+                        items: components["schemas"]["IndexedFile"][];
+                        languages: {
+                            language?: string;
+                            count?: number;
+                        }[];
+                        /** @description Notice that repository content is untrusted data. */
+                        untrusted: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    lookupWorkspaceSymbols: {
+        parameters: {
+            query: {
+                name: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Symbol matches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspace_id: string;
+                        items: components["schemas"]["SymbolHit"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getRunContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Context manifest with provenance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextManifest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    refreshRunContext: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "workspace_id": "wsp_1a2b3c4d5e6f7g8h9i0j",
+                 *       "query": "pagination off by one in list handler",
+                 *       "token_budget": 32768,
+                 *       "expand": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["ContextRefresh"];
+            };
+        };
+        responses: {
+            /** @description Manifest built and recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextManifest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
 }
