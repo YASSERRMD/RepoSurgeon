@@ -325,6 +325,7 @@ type m02Harness struct {
 	handler     http.Handler
 	fakeRuns    *fakeRunsStore
 	fakeQueue   *fakeTaskQueue
+	plans       *PlanService
 	sessions    *fakeSessions
 	identities  *fakeIdentities
 	members     *fakeMembers
