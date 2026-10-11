@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.4.0
+  version: 0.5.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -46,6 +46,10 @@ tags:
     description: Append-only activity trail
   - name: model
     description: Step 5 Preview model gateway
+  - name: github
+    description: GitHub App integration and issue import
+  - name: webhooks
+    description: GitHub webhook intake
 
 paths:
   /health/live:
@@ -852,6 +856,264 @@ paths:
                   request_id: req_0123456789abcdef
 
 
+  /api/v1/github/installations/connect:
+    post:
+      operationId: connectInstallation
+      summary: Bind a GitHub App installation to the caller's organization
+      description: The installation is verified against GitHub before it is stored.
+      tags: [github]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationConnect'
+            example:
+              installation_id: 12345678
+              account_login: acme
+      responses:
+        '201':
+          description: Installation bound.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationStatus'
+              example:
+                installation_id: 12345678
+                account_login: acme
+                repositories: 7
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '502':
+          $ref: '#/components/responses/GitHubError'
+        '503':
+          description: GitHub App is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: github_not_configured
+                  message: the GitHub App is not configured on this server
+                  request_id: req_0123456789abcdef
+
+  /api/v1/github/repos:
+    get:
+      operationId: listGitHubRepositories
+      summary: List repositories an installation can access
+      tags: [github]
+      parameters:
+        - name: installation_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Accessible repositories.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RepositorySummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          description: Installation is not bound to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: not_found
+                  message: installation is not connected to this organization
+                  request_id: req_0123456789abcdef
+        '502':
+          $ref: '#/components/responses/GitHubError'
+        '503':
+          description: GitHub App is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/issues/import:
+    post:
+      operationId: importIssue
+      summary: Import a GitHub issue into a project
+      description: |
+        Normalizes the issue into a local snapshot with a body hash, labels,
+        assignees and comment count. The issue body is untrusted data and is
+        never treated as instruction.
+      tags: [github]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueImport'
+            example:
+              project_id: prj_7h2k9m4q8w3e6r1t5y0u2i4o6p
+              installation_id: 12345678
+              issue_url: https://github.com/acme/billing/issues/12
+      responses:
+        '201':
+          description: Issue imported.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/GitHubError'
+        '503':
+          description: GitHub App is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/issues:
+    get:
+      operationId: listIssues
+      summary: List a project's imported issues
+      tags: [github]
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Imported issues, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Issue'
+                  next_cursor:
+                    type: [string, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/webhooks/github:
+    post:
+      operationId: receiveGitHubWebhook
+      summary: GitHub webhook intake
+      description: |
+        Verifies the HMAC-SHA256 signature, ignores replayed delivery IDs and
+        records the delivery. It never starts code execution: runs require a
+        separately authorized task start.
+      tags: [webhooks]
+      security: []
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Delivery accepted and recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, delivery_id]
+                properties:
+                  status:
+                    type: string
+                    enum: [accepted]
+                  delivery_id:
+                    type: string
+        '200':
+          description: Duplicate delivery; already processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [duplicate]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Signature verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: invalid_signature
+                  message: webhook signature verification failed
+                  request_id: req_0123456789abcdef
+        '413':
+          description: Payload too large.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Webhook secret is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+
 components:
   schemas:
     LiveStatus:
@@ -1337,6 +1599,97 @@ components:
         finish_reason:
           type: string
 
+    InstallationConnect:
+      type: object
+      required: [installation_id]
+      properties:
+        installation_id:
+          type: integer
+          minimum: 1
+        account_login:
+          type: string
+          maxLength: 120
+
+    InstallationStatus:
+      type: object
+      required: [installation_id, account_login, repositories]
+      properties:
+        installation_id:
+          type: integer
+        account_login:
+          type: string
+        repositories:
+          type: integer
+
+    RepositorySummary:
+      type: object
+      required: [id, full_name, default_branch, private, archived]
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        name:
+          type: string
+        default_branch:
+          type: string
+        private:
+          type: boolean
+        archived:
+          type: boolean
+        html_url:
+          type: string
+
+    IssueImport:
+      type: object
+      required: [project_id, installation_id, issue_url]
+      properties:
+        project_id:
+          type: string
+        installation_id:
+          type: integer
+          minimum: 1
+        issue_url:
+          type: string
+          description: Full GitHub issue URL.
+
+    Issue:
+      type: object
+      required: [id, project_id, number, title, body, state, comments_count, body_hash, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+          description: Untrusted issue text; never treated as instruction.
+        state:
+          type: string
+          enum: [open, closed]
+        labels:
+          type: array
+          items:
+            type: string
+        assignees:
+          type: array
+          items:
+            type: string
+        comments_count:
+          type: integer
+        body_hash:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     Error:
       type: object
       required: [error]
@@ -1356,6 +1709,17 @@ components:
               additionalProperties: true
 
   responses:
+    GitHubError:
+      description: GitHub refused or failed the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: github_permission_denied
+              message: GitHub denied access with this installation
+              request_id: req_0123456789abcdef
     BadRequest:
       description: Client-correctable request error.
       content:

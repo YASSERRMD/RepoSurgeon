@@ -387,6 +387,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/github/installations/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a GitHub App installation to the caller's organization
+         * @description The installation is verified against GitHub before it is stored.
+         */
+        post: operations["connectInstallation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List repositories an installation can access */
+        get: operations["listGitHubRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a GitHub issue into a project
+         * @description Normalizes the issue into a local snapshot with a body hash, labels,
+         *     assignees and comment count. The issue body is untrusted data and is
+         *     never treated as instruction.
+         */
+        post: operations["importIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's imported issues */
+        get: operations["listIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * GitHub webhook intake
+         * @description Verifies the HMAC-SHA256 signature, ignores replayed delivery IDs and
+         *     records the delivery. It never starts code execution: runs require a
+         *     separately authorized task start.
+         */
+        post: operations["receiveGitHubWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -610,6 +708,48 @@ export interface components {
             };
             finish_reason?: string;
         };
+        InstallationConnect: {
+            installation_id: number;
+            account_login?: string;
+        };
+        InstallationStatus: {
+            installation_id: number;
+            account_login: string;
+            repositories: number;
+        };
+        RepositorySummary: {
+            id: number;
+            full_name: string;
+            name?: string;
+            default_branch: string;
+            private: boolean;
+            archived: boolean;
+            html_url?: string;
+        };
+        IssueImport: {
+            project_id: string;
+            installation_id: number;
+            /** @description Full GitHub issue URL. */
+            issue_url: string;
+        };
+        Issue: {
+            id: string;
+            project_id: string;
+            number: number;
+            title: string;
+            /** @description Untrusted issue text; never treated as instruction. */
+            body: string;
+            /** @enum {string} */
+            state: "open" | "closed";
+            labels?: string[];
+            assignees?: string[];
+            comments_count: number;
+            body_hash: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         Error: {
             error: {
                 code: string;
@@ -622,6 +762,24 @@ export interface components {
         };
     };
     responses: {
+        /** @description GitHub refused or failed the request. */
+        GitHubError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "github_permission_denied",
+                 *         "message": "GitHub denied access with this installation",
+                 *         "request_id": "req_0123456789abcdef"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Client-correctable request error. */
         BadRequest: {
             headers: {
@@ -1753,6 +1911,290 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    connectInstallation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "installation_id": 12345678,
+                 *       "account_login": "acme"
+                 *     }
+                 */
+                "application/json": components["schemas"]["InstallationConnect"];
+            };
+        };
+        responses: {
+            /** @description Installation bound. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "installation_id": 12345678,
+                     *       "account_login": "acme",
+                     *       "repositories": 7
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InstallationStatus"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            502: components["responses"]["GitHubError"];
+            /** @description GitHub App is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "github_not_configured",
+                     *         "message": "the GitHub App is not configured on this server",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listGitHubRepositories: {
+        parameters: {
+            query: {
+                installation_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accessible repositories. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["RepositorySummary"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            /** @description Installation is not bound to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "not_found",
+                     *         "message": "installation is not connected to this organization",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            502: components["responses"]["GitHubError"];
+            /** @description GitHub App is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    importIssue: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "project_id": "prj_7h2k9m4q8w3e6r1t5y0u2i4o6p",
+                 *       "installation_id": 12345678,
+                 *       "issue_url": "https://github.com/acme/billing/issues/12"
+                 *     }
+                 */
+                "application/json": components["schemas"]["IssueImport"];
+            };
+        };
+        responses: {
+            /** @description Issue imported. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issue"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            502: components["responses"]["GitHubError"];
+            /** @description GitHub App is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listIssues: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description Opaque pagination cursor from a previous `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Imported issues, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Issue"][];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    receiveGitHubWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Hub-Signature-256": string;
+                "X-GitHub-Delivery": string;
+                "X-GitHub-Event": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicate delivery; already processed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "duplicate";
+                    };
+                };
+            };
+            /** @description Delivery accepted and recorded. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "accepted";
+                        delivery_id: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Signature verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "invalid_signature",
+                     *         "message": "webhook signature verification failed",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Payload too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Webhook secret is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["Error"];
                 };
             };
