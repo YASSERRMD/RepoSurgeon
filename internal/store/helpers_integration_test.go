@@ -8,12 +8,14 @@ package store
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/YASSERRMD/RepoSurgeon/internal/domain"
 	"github.com/YASSERRMD/RepoSurgeon/internal/ids"
+	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,6 +30,40 @@ type testEnv struct {
 	idempotency   *Idempotency
 	users         *Users
 }
+
+// openStorePool connects a pool to the test database with the same options the
+// API uses. It is shared by every integration test in this package.
+func openStorePool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	dsn := os.Getenv("RS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("RS_TEST_DATABASE_URL not set; skipping PostgreSQL integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := Open(ctx, dsn, DefaultOptions())
+	if err != nil {
+		t.Fatalf("open test pool: %v", err)
+	}
+	t.Cleanup(func() { pool.Close() })
+	return pool
+}
+
+// newTestEncryptor builds the encryptor used by credential tests.
+func newTestEncryptor(t *testing.T) *secrets.Encryptor {
+	t.Helper()
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = 0x5a
+	}
+	encryptor, err := secrets.New(base64.StdEncoding.EncodeToString(raw), 1)
+	if err != nil {
+		t.Fatalf("new encryptor: %v", err)
+	}
+	return encryptor
+}
+
+func fingerprintOf(value string) string { return secrets.Fingerprint(value) }
 
 func openTestEnv(t *testing.T) testEnv {
 	t.Helper()

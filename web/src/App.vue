@@ -1,23 +1,36 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, onMounted } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
 
 import { useHealthStore } from '@/stores/health';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useAuthStore } from '@/stores/auth';
 
 const health = useHealthStore();
 const organizations = useOrganizationsStore();
+const auth = useAuthStore();
+const router = useRouter();
 
 const navLinks = [
   { to: '/', label: 'Status' },
   { to: '/organizations', label: 'Organizations' },
   { to: '/projects', label: 'Projects' },
+  { to: '/members', label: 'Members' },
+  { to: '/credentials', label: 'Credentials' },
 ];
+
+const userEmail = computed(() => auth.user?.email ?? '');
 
 // The header shows the active organization; resolve its name once on boot.
 onMounted(() => {
   if (!organizations.loaded) void organizations.load();
 });
+
+async function signOut(): Promise<void> {
+  await auth.logout();
+  // The session is gone locally; the guard sends the browser back to /login.
+  if (!auth.isAuthenticated) await router.push('/login');
+}
 
 const statusLabels: Record<string, string> = {
   ready: 'All systems operational',
@@ -53,6 +66,19 @@ const statusLabels: Record<string, string> = {
         </span>
         <span v-if="health.system" class="badge badge-env">{{ health.system.environment }}</span>
         <span v-if="health.system" class="version">v{{ health.system.version }}</span>
+        <span v-if="auth.isAuthenticated" class="badge badge-user" data-testid="current-user">
+          {{ userEmail }}
+        </span>
+        <button
+          v-if="auth.isAuthenticated"
+          class="signout"
+          type="button"
+          data-testid="sign-out"
+          :disabled="auth.loading"
+          @click="signOut()"
+        >
+          Sign out
+        </button>
       </div>
     </header>
 
@@ -157,6 +183,31 @@ const statusLabels: Record<string, string> = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.badge-user {
+  background: var(--color-surface);
+  color: var(--color-navy);
+  border: 1px solid var(--color-gray-line);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signout {
+  border: 1px solid var(--color-navy);
+  background: var(--color-surface);
+  color: var(--color-navy);
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.signout:hover:not(:disabled) {
+  background: var(--color-navy);
+  color: #fff;
 }
 
 .version {

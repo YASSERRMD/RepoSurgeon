@@ -150,6 +150,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Authenticate with email and password
+         * @description Returns the authenticated user and sets the session cookie. Repeated
+         *     failures are rate limited per email and per client address; the
+         *     response is identical for unknown email and wrong password so it
+         *     cannot be used to enumerate accounts.
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current session */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the current session
+         * @description Issues a new session token and revokes the previous one, so a stolen
+         *     token is only usable until the legitimate client refreshes.
+         */
+        post: operations["refreshSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current user with roles and permissions */
+        get: operations["getCurrentUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List members of an organization */
+        get: operations["listMembers"];
+        put?: never;
+        /**
+         * Invite a member with a role
+         * @description Requires the member.admin permission. Roles are validated server-side; untrusted content can never grant permissions.
+         */
+        post: operations["inviteMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{membership_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a member from the organization */
+        delete: operations["removeMember"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a member's role
+         * @description Requires member.admin. The last owner cannot be demoted or removed,
+         *     and a member cannot escalate their own role.
+         */
+        patch: operations["updateMemberRole"];
+        trace?: never;
+    };
+    "/api/v1/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List credential metadata for an organization
+         * @description Values are never returned. Each item reports kind, label, status, key
+         *     version, fingerprint and verification state.
+         */
+        get: operations["listCredentials"];
+        put?: never;
+        /**
+         * Store an encrypted provider credential
+         * @description Requires credential.admin. The plaintext value is encrypted with envelope AEAD before it touches the database and is never returned, logged or exposed to model runs.
+         */
+        post: operations["createCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        /** Credential metadata (never the value) */
+        get: operations["getCredential"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a credential
+         * @description Revocation destroys the ability to decrypt the stored value; the
+         *     metadata row is retained for audit.
+         */
+        delete: operations["revokeCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credentials/{credential_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the credential value and key version
+         * @description The new value is encrypted; the previous ciphertext is destroyed in the
+         *     same transaction. Unrelated credentials are untouched.
+         */
+        post: operations["rotateCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -262,6 +455,93 @@ export interface components {
         AuditEventPage: {
             items: components["schemas"]["AuditEvent"][];
             next_cursor: string | null;
+        };
+        LoginRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
+        SessionResponse: {
+            user: components["schemas"]["UserSummary"];
+            /** @description Value to echo in the X-CSRF-Token header on mutations. */
+            csrf_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        UserSummary: {
+            id: string;
+            /** Format: email */
+            email: string;
+            display_name?: string;
+        };
+        CurrentUser: components["schemas"]["UserSummary"] & {
+            organizations: components["schemas"]["MembershipSummary"][];
+        };
+        MembershipSummary: {
+            id: string;
+            name: string;
+            slug: string;
+            role: components["schemas"]["Role"];
+            permissions: components["schemas"]["Permission"][];
+        };
+        /** @enum {string} */
+        Role: "owner" | "admin" | "maintainer" | "reviewer" | "member" | "viewer";
+        /** @enum {string} */
+        Permission: "project.read" | "project.write" | "run.execute" | "credential.admin" | "member.admin" | "approval.decide" | "merge.execute";
+        MemberPage: {
+            items: components["schemas"]["Member"][];
+            next_cursor: string | null;
+        };
+        Member: {
+            id: string;
+            user_id: string;
+            /** Format: email */
+            email: string;
+            display_name?: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        MemberInvite: {
+            organization_id: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["Role"];
+        };
+        MemberUpdate: {
+            role: components["schemas"]["Role"];
+        };
+        /** @enum {string} */
+        CredentialKind: "github_app" | "stepfun" | "other";
+        /** @enum {string} */
+        CredentialStatus: "active" | "rotating" | "revoked" | "failed";
+        CredentialPage: {
+            items: components["schemas"]["Credential"][];
+            next_cursor: string | null;
+        };
+        Credential: {
+            id: string;
+            organization_id: string;
+            kind: components["schemas"]["CredentialKind"];
+            label: string;
+            status: components["schemas"]["CredentialStatus"];
+            /** @description Envelope key version used to encrypt the value. */
+            key_version: number;
+            /** @description Non-reversible fingerprint used for idempotent upserts. */
+            fingerprint: string;
+            /** Format: date-time */
+            last_verified_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CredentialCreate: {
+            organization_id: string;
+            kind: components["schemas"]["CredentialKind"];
+            label: string;
+            value: string;
+        };
+        CredentialRotate: {
+            value: string;
         };
         Error: {
             error: {
@@ -390,6 +670,8 @@ export interface components {
     parameters: {
         /** @description Correlation ID; echoed on the response and in server logs. */
         RequestID: string;
+        /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+        CSRFToken: string;
         /**
          * @description Required for create/update operations. Repeating a request with the
          *     same key returns the original result instead of duplicating effects.
@@ -801,6 +1083,469 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "developer@example.com",
+                 *       "password": "correct-horse-battery-staple"
+                 *     }
+                 */
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Authentication succeeded. */
+            200: {
+                headers: {
+                    /** @description Opaque session cookie (HttpOnly, SameSite=Strict). */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "user": {
+                     *         "id": "usr_1a2b3c4d5e6f7g8h9i0j",
+                     *         "email": "developer@example.com",
+                     *         "display_name": "Developer"
+                     *       },
+                     *       "csrf_token": "csrf_9f8e7d6c5b4a",
+                     *       "expires_at": "2026-10-11T10:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Invalid credentials, unknown account, or rate limited. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "invalid_credentials",
+                     *         "message": "email or password is incorrect",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed attempts; retry after the given delay. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "too many failed login attempts; try again later",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked; the cookie is cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    refreshSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session rotated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authenticated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "usr_1a2b3c4d5e6f7g8h9i0j",
+                     *       "email": "developer@example.com",
+                     *       "display_name": "Developer",
+                     *       "organizations": [
+                     *         {
+                     *           "id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "name": "Acme Engineering",
+                     *           "slug": "acme-engineering",
+                     *           "role": "owner",
+                     *           "permissions": [
+                     *             "project.read",
+                     *             "project.write",
+                     *             "run.execute"
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CurrentUser"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMembers: {
+        parameters: {
+            query: {
+                organization_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Members with roles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    inviteMember: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                 *       "email": "teammate@example.com",
+                 *       "role": "maintainer"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MemberInvite"];
+            };
+        };
+        responses: {
+            /** @description Member created or updated. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeMember: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMemberRole: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "role": "reviewer"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Role updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCredentials: {
+        parameters: {
+            query: {
+                organization_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+        };
+    };
+    createCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                 *       "kind": "stepfun",
+                 *       "label": "production keys",
+                 *       "value": "sf-live-xxxxxxxxxxxxxxxx"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CredentialCreate"];
+            };
+        };
+        responses: {
+            /** @description Credential stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rotateCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "value": "sf-live-yyyyyyyyyyyyyyyy"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CredentialRotate"];
+            };
+        };
+        responses: {
+            /** @description Credential rotated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

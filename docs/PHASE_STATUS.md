@@ -23,8 +23,8 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 |---|---|---|---|---|---|
 | M00 — Repository foundation & engineering governance | merged (branch deleted) | PR https://github.com/YASSERRMD/RepoSurgeon/pull/1 | `d69e78b2dea17a9744c842e0419c766e826d7747` | `docs/milestone-reports/M00.md` |
 | M01 — Domain model, persistence, project isolation | merged, branch deleted | PR https://github.com/YASSERRMD/RepoSurgeon/pull/2 | recorded in M02 report | `docs/milestone-reports/M01.md` |
-| M02 — Authentication, authorization, secure credentials | — | next | — | — | — |
-| M03 | — | not started | — | — | — |
+| M02 — Authentication, authorization, secure credentials | merged, branch deleted | PR https://github.com/YASSERRMD/RepoSurgeon/pull/3 | recorded in M03 report | `docs/milestone-reports/M02.md` |
+| M03 — Model gateway and tool calling | — | next | — | — | — |
 | … M19 | — | not started | — | — | — |
 
 ## Log

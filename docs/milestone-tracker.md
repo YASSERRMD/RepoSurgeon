@@ -9,8 +9,8 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 | M00 | Repository foundation and engineering governance | merged, branch deleted | merged | #1 | `d69e78b` |
 | M01 | Domain model, persistence, project isolation | merged, branch deleted | merged | #2 | recorded in M02 report |
 | M01 | Domain model, persistence, project isolation | — | not started | — | — |
-| M02 | Authentication, authorization, secure credentials | — | not started | — | — |
-| M03 | Step 5 Preview model gateway and tool calling | — | not started | — | — |
+| M02 | Authentication, authorization, secure credentials | merged, branch deleted | merged | #3 | recorded in M03 report |
+| M03 | Step 5 Preview model gateway and tool calling | next | in progress | — | — |
 | M04 | GitHub integration, repository registration, issue sync | — | not started | — | — |
 | M05 | Safe repository checkout, branching, worktree management | — | not started | — | — |
 | M06 | Durable agent run state machine and worker scheduling | — | not started | — | — |

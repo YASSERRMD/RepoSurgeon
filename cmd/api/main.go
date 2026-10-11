@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/YASSERRMD/RepoSurgeon/internal/api"
 	"github.com/YASSERRMD/RepoSurgeon/internal/config"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
+	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
 )
 
@@ -36,7 +38,12 @@ func run() error {
 	migrateOnly := flag.Bool("migrate-only", false, "apply pending migrations and exit")
 	flag.Parse()
 
-	cfg, err := config.Load()
+	// A migrate-only run never touches encrypted credentials, so it must not
+	// require the credential key.
+	cfg, err := config.LoadFrom(os.LookupEnv, config.LoadOptions{
+		RequireDatabase:      true,
+		RequireCredentialKey: !*migrateOnly,
+	})
 	if err != nil {
 		return err
 	}
@@ -72,6 +79,15 @@ func run() error {
 		store.NewAudit(pool),
 		store.NewIdempotency(pool),
 	)
+	// Migrations never touch encrypted credentials, so a migrate-only run
+	// skips building the encryptor entirely.
+	var encryptor *secrets.Encryptor
+	if !*migrateOnly {
+		encryptor, err = secrets.New(cfg.CredentialKEK, cfg.CredentialKeyVersion)
+		if err != nil {
+			return fmt.Errorf("credential encryption: %w", err)
+		}
+	}
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -80,12 +96,24 @@ func run() error {
 		},
 		Services:         services,
 		SubjectDirectory: api.NewSubjectDirectory(store.NewUsers(pool), store.NewOrganizations(pool)),
-		Logger:           logger,
-		Version:          version,
-		GitCommit:        gitCommit,
-		BuildTime:        buildTime,
+		Auth: api.NewAuthServices(api.AuthServicesConfig{
+			Sessions:      store.NewSessions(pool),
+			Identities:    store.NewIdentities(pool),
+			Members:       store.NewMembers(pool),
+			Users:         store.NewUsers(pool),
+			Organizations: store.NewOrganizations(pool),
+			Credentials:   store.NewCredentials(pool),
+		}),
+		Encryptor: encryptor,
+		Logger:    logger,
+		Version:   version,
+		GitCommit: gitCommit,
+		BuildTime: buildTime,
 	})
-	logger.Info("m01 services wired", "services", "organizations, projects, audit, idempotency")
+	logger.Info("services wired",
+		"m01", "organizations, projects, audit, idempotency",
+		"m02", "sessions, identities, members, credentials",
+		"credential_key_version", encryptor.KeyVersion())
 	if err != nil {
 		return err
 	}

@@ -13,7 +13,12 @@ func lookupFrom(m map[string]string) func(string) (string, bool) {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	cfg, err := LoadFrom(lookupFrom(map[string]string{"RS_ENV": "test"}), DefaultOptions())
+	cfg, err := LoadFrom(lookupFrom(map[string]string{
+		"RS_ENV": "test",
+		// Test environments use a fixed development key; production requires a
+		// real one (see TestLoadRequiresCredentialKeyOutsideTest).
+		"RS_CREDENTIAL_KEK": "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=",
+	}), DefaultOptions())
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
@@ -34,8 +39,25 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRequiresCredentialKeyOutsideTest(t *testing.T) {
+	_, err := LoadFrom(lookupFrom(map[string]string{
+		"RS_ENV":          "production",
+		"RS_DATABASE_URL": "postgres://user:pass@host:5432/db",
+	}), DefaultOptions())
+	var missing *MissingConfigError
+	if err == nil || !asMissing(err, &missing) {
+		t.Fatalf("err = %v, want MissingConfigError", err)
+	}
+	if len(missing.Keys) != 1 || missing.Keys[0] != "RS_CREDENTIAL_KEK" {
+		t.Fatalf("missing keys = %v, want [RS_CREDENTIAL_KEK]", missing.Keys)
+	}
+}
+
 func TestLoadRequiresDatabaseOutsideTest(t *testing.T) {
-	_, err := LoadFrom(lookupFrom(map[string]string{"RS_ENV": "production"}), DefaultOptions())
+	_, err := LoadFrom(lookupFrom(map[string]string{
+		"RS_ENV":            "production",
+		"RS_CREDENTIAL_KEK": "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=",
+	}), DefaultOptions())
 	var missing *MissingConfigError
 	if err == nil {
 		t.Fatal("expected missing configuration error")

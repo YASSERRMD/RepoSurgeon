@@ -50,8 +50,28 @@ func (r *Users) UpsertByEmail(ctx context.Context, email, displayName string) (s
 	return userID, nil
 }
 
-// Get returns a live user. Soft-deleted users are invisible so a deleted
-// principal cannot be addressed again.
+// GetByEmail returns the user record for a normalized email address. Live users
+// only; soft-deleted principals are invisible.
+//
+// Get returns a live user by id.
+func (r *Users) GetByEmail(ctx context.Context, email string) (domain.User, error) {
+	ctx, cancel := withQueryTimeout(ctx)
+	defer cancel()
+	var user domain.User
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, email, display_name, created_at, updated_at
+		FROM users WHERE lower(email) = lower($1) AND deleted_at IS NULL`, email).
+		Scan(&user.ID, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.User{}, fmt.Errorf("user: %w", domain.ErrNotFound)
+		}
+		return domain.User{}, fmt.Errorf("get user by email: %w", err)
+	}
+	return user, nil
+}
+
+// Get returns a user by id.
 func (r *Users) Get(ctx context.Context, userID string) (domain.User, error) {
 	if !nonEmpty(userID) {
 		return domain.User{}, validationErrorf("user_id", "id is required")

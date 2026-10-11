@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import App from './App.vue';
 import { useHealthStore, type OperationalStatus } from '@/stores/health';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useAuthStore } from '@/stores/auth';
 
 function stubResponses(): void {
   vi.stubGlobal(
@@ -24,6 +25,7 @@ function routerStub() {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
+      { path: '/login', component: { template: '<div />' } },
       { path: '/organizations', component: { template: '<div />' } },
       { path: '/projects', component: { template: '<div />' } },
       { path: '/organizations/:id', component: { template: '<div />' } },
@@ -55,8 +57,40 @@ describe('App shell', () => {
       '/',
       '/organizations',
       '/projects',
+      '/members',
+      '/credentials',
     ]);
     await wrapper.vm.$nextTick();
+  });
+
+  it('shows the signed-in user and the sign-out control', async () => {
+    stubResponses();
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = routerStub();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    // Anonymous visitors get no email and no sign-out button.
+    expect(wrapper.find('[data-testid="current-user"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sign-out"]').exists()).toBe(false);
+
+    const auth = useAuthStore();
+    auth.user = {
+      id: 'usr_1a2b3c4d5e6f7g8h9i0j',
+      email: 'developer@example.com',
+      organizations: [],
+    };
+    auth.status = 'authenticated';
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="current-user"]').text()).toBe('developer@example.com');
+
+    await wrapper.find('[data-testid="sign-out"]').trigger('click');
+    await flushPromises();
+
+    expect(auth.status).toBe('anonymous');
+    expect(wrapper.find('[data-testid="current-user"]').exists()).toBe(false);
   });
 
   it('shows the active organization name when one is selected', async () => {
