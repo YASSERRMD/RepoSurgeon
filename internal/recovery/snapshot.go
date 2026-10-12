@@ -150,7 +150,7 @@ func (s Snapshot) Restore(root string) ([]string, error) {
 		}
 		restored = append(restored, rel)
 	}
-	// Remove files the snapshot never recorded, so an untracked artefact from a
+	// Remove files the snapshot never recorded, so an untracked artifact from a
 	// failed attempt cannot survive the rollback.
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {

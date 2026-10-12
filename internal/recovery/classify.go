@@ -3,7 +3,7 @@
 //
 // The package is deliberately dependency-light: it defines the seams the
 // worker and the API satisfy (runner, patch applier, snapshotter, journal,
-// receipts) so that recovery behaviour can be tested without Docker, network
+// receipts) so that recovery behavior can be tested without Docker, network
 // access or a live model provider.
 package recovery
 
@@ -91,7 +91,7 @@ type Policy struct {
 	MaxDelay time.Duration
 	// Multiplier grows the delay per attempt.
 	Multiplier float64
-	// RespectRetryAfter honours a provider Retry-After when present.
+	// RespectRetryAfter honors a provider Retry-After when present.
 	RespectRetryAfter bool
 }
 
@@ -199,7 +199,7 @@ func (c *Classifier) Classify(err error) ErrorClass {
 }
 
 // Fingerprint normalises free-form diagnostics into a stable hash so that the
-// same failure is recognised across attempts regardless of timing noise.
+// same failure is recognized across attempts regardless of timing noise.
 func Fingerprint(parts ...string) string {
 	var normalized []string
 	for _, part := range parts {
@@ -286,7 +286,7 @@ func (p Progress) Stalled() bool {
 	return p.FailingAfter >= p.FailingBefore && p.VerdictBefore == p.VerdictAfter
 }
 
-// Delay returns the bounded backoff for an attempt, honouring Retry-After.
+// Delay returns the bounded backoff for an attempt, honoring Retry-After.
 func Delay(policy Policy, attempt int, retryAfter time.Duration) time.Duration {
 	if attempt < 1 {
 		attempt = 1

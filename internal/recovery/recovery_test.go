@@ -64,14 +64,14 @@ func TestDelayIsBoundedAndGrows(t *testing.T) {
 	first := Delay(policy, 1, 0)
 	second := Delay(policy, 2, 0)
 	third := Delay(policy, 3, 0)
-	if !(first < second && second < third) {
+	if first >= second || second >= third {
 		t.Fatalf("delays did not grow: %v %v %v", first, second, third)
 	}
 	if Delay(policy, 20, 0) != policy.MaxDelay {
 		t.Fatal("delay exceeded the cap")
 	}
 	if got := Delay(policy, 3, 10*time.Second); got != 10*time.Second {
-		t.Fatalf("retry-after not honoured: %v", got)
+		t.Fatalf("retry-after not honored: %v", got)
 	}
 }
 

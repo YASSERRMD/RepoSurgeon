@@ -159,6 +159,11 @@ func run() error {
 	// M11: verified check profiles.
 	checkService := api.NewCheckService(nil, api.NewMemoryCheckStore())
 
+	// M12: bounded iterative debugging and state reconciliation.
+	recoveryService := api.NewRecoveryService(api.NewRecoveryGateway(pool), func(workspaceID string) string {
+		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
+	})
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -186,6 +191,7 @@ func run() error {
 		Plans:      planService,
 		Patches:    patchService,
 		Checks:     checkService,
+		Recovery:   recoveryService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

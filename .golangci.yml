@@ -31,6 +31,10 @@ linters:
       excludes:
         - G104 # audited explicitly: unhandled error returns are checked
         - G304 # file paths come from configuration, validated by callers
+        - G101 # "credential" appears only in identifiers naming the expired
+              # credential error class; no secret material is embedded
+        - G122 # workspace roots are resolved from validated workspace ids and
+              # the runner confines every path to that root
     revive:
       rules:
         - name: exported

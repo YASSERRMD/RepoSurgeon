@@ -1,7 +1,7 @@
-// Package recovery persistence keeps the state recovery journal, attempt
-// history, per-class budgets, effect receipts and content-bearing checkpoints
-// durable. Every repository scopes statements to an organization so one tenant
-// can never read another tenant's recovery evidence.
+// Package store persists durable state. This file keeps the state recovery
+// journal, attempt history, per-class budgets, effect receipts and
+// content-bearing checkpoints durable. Every repository scopes statements to an
+// organization so one tenant can never read another tenant's recovery evidence.
 package store
 
 import (

@@ -95,7 +95,7 @@ type AttemptRequest struct {
 	Failure checks.Check
 	// DiffFingerprint identifies the diff, empty for a no-op attempt.
 	DiffFingerprint string
-	// RetryAfter is a provider hint, honoured only where policy allows.
+	// RetryAfter is a provider hint, honored only where policy allows.
 	RetryAfter time.Duration
 	// Operate applies the diff to the workspace before checks run.
 	Operate func(ctx context.Context) error
