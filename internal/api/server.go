@@ -54,7 +54,9 @@ type Options struct {
 	// Plans exposes the M09 plan service.
 	Plans *PlanService
 	// Patches exposes the M10 patch engine and checkpoints.
-	Patches   *PatchService
+	Patches *PatchService
+	// Checks exposes the M11 check profiles, runner and store.
+	Checks    *CheckService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -79,6 +81,7 @@ type Server struct {
 	context    *ContextService
 	plans      *PlanService
 	patches    *PatchService
+	checks     *CheckService
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -135,6 +138,7 @@ func NewServer(opts Options) (*Server, error) {
 		context:    opts.Context,
 		plans:      opts.Plans,
 		patches:    opts.Patches,
+		checks:     opts.Checks,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -289,7 +293,12 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/approvals", s.handleCreateApprovalRequest)
 		router.Handle(http.MethodPost, "/api/v1/approvals/{approval_id}/decide", s.handleDecideApproval)
 	}
-	if s.patches != nil && s.runs != nil {
+	if s.runs != nil {
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/checks", s.handleRunChecks)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/checks", s.handleListChecks)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/checks/{check_id}/logs", s.handleGetCheckLogs)
+	}
+	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/patches", s.handleApplyPatch)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/diff", s.handleGetDiff)
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/checkpoints/{checkpoint_id}/restore", s.handleRestoreCheckpoint)

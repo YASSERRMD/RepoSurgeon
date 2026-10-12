@@ -156,6 +156,9 @@ func run() error {
 		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
 	})
 
+	// M11: verified check profiles.
+	checkService := api.NewCheckService(nil, api.NewMemoryCheckStore())
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -182,6 +185,7 @@ func run() error {
 		Context:    contextService,
 		Plans:      planService,
 		Patches:    patchService,
+		Checks:     checkService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,
