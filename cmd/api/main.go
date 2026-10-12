@@ -24,6 +24,7 @@ import (
 	"github.com/YASSERRMD/RepoSurgeon/internal/queue"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
+	"path/filepath"
 )
 
 // Build metadata injected with -ldflags -X.
@@ -150,6 +151,11 @@ func run() error {
 	// M09: typed plans with verification and recorded approvals.
 	planService := api.NewPlanService(api.NewMemoryPlanStore(), repoIndex)
 
+	// M10: patch engine and checkpoint store.
+	patchService := api.NewPatchService(nil, api.NewMemoryCheckpoints(), func(workspaceID string) string {
+		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
+	})
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -175,6 +181,7 @@ func run() error {
 		Tools:      toolService,
 		Context:    contextService,
 		Plans:      planService,
+		Patches:    patchService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

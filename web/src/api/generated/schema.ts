@@ -841,6 +841,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/patches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a unified diff inside the run workspace
+         * @description Applies atomically: every hunk is verified against the file content and
+         *     any failure restores the workspace to its pre-patch state. Protected
+         *     paths are refused, and stale context returns 409.
+         */
+        post: operations["applyPatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get the workspace diff and record a checkpoint */
+        get: operations["getRunDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/checkpoints/{checkpoint_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                checkpoint_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a checkpoint recorded before a patch attempt */
+        post: operations["restoreCheckpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1357,6 +1420,35 @@ export interface components {
             /** @enum {string} */
             decision: "approve" | "reject";
             reason?: string;
+        };
+        PatchSubmission: {
+            workspace_id: string;
+            unified_diff: string;
+        };
+        PatchResult: {
+            attempt: components["schemas"]["PatchAttempt"];
+            paths: string[];
+        };
+        PatchAttempt: {
+            id: string;
+            path: string;
+            /** @enum {string} */
+            action: "modified" | "created" | "deleted" | "renamed";
+            /** @description Empty when the file did not exist. */
+            before_sha256: string;
+            /** @description Empty when the file was deleted. */
+            after_sha256: string;
+            hunks: number;
+            created_at: string;
+            results?: components["schemas"]["PatchFileResult"][];
+        };
+        PatchFileResult: {
+            path: string;
+            /** @enum {string} */
+            action: "modified" | "created" | "deleted" | "renamed";
+            before_sha256: string;
+            after_sha256: string;
+            hunks: number;
         };
         Error: {
             error: {
@@ -3667,6 +3759,171 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    applyPatch: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "workspace_id": "wsp_1a2b3c4d5e6f7g8h9i0j",
+                 *       "unified_diff": "diff --git a/internal/api/list.go b/internal/api/list.go\n--- a/internal/api/list.go\n+++ b/internal/api/list.go\n@@ -1,3 +1,3 @@\n package api\n \n-func List() int { return 0 }\n+func List() int { return 42 }\n"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PatchSubmission"];
+            };
+        };
+        responses: {
+            /** @description Patch applied with before/after hashes. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Protected path. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "protected_path",
+                     *         "message": "patch: path is protected and requires a policy exception",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The diff does not match the file content. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "diff_context_mismatch",
+                     *         "message": "patch: hunk context does not match the file: expected \"func List() int { return 999 }\" at line 3",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Patch or file exceeds the size limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRunDiff: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified diff with per-file hashes and a checkpoint id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        diff: string;
+                        checkpoint_id: string;
+                        file_hashes: {
+                            [key: string]: string;
+                        };
+                        project_id: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreCheckpoint: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+                checkpoint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checkpoint restored; current hashes are reported for comparison. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        checkpoint_id: string;
+                        file_hashes: {
+                            [key: string]: string;
+                        };
+                        current_hashes: {
+                            [key: string]: string;
+                        };
+                        restored: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

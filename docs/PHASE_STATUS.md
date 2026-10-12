@@ -31,7 +31,7 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | M07 — Isolated tool execution and human approval gateway | merged, branch deleted | PR #8 | `994a1b91d2f314c7c24e67ab7185ca033f3be3df` | `docs/milestone-reports/M07.md` |
 | M08 — Repository discovery, code search, long-context builder | merged, branch deleted | PR #9 | `0d2dca781200309523fde1e81c0db685835f5af4` | `docs/milestone-reports/M08.md` |
 | M09 — Issue investigation, plans, acceptance criteria | merged, branch deleted | PR #10 | `76592d4867c299ba842f3780139e03712bce6fe1` | `docs/milestone-reports/M09.md` |
-| M10 — Atomic code change and patch engine | `milestone/m10-atomic-code-change-and-patch-engine` | in progress | — | — | — |
+| M10 — Atomic code change and patch engine | merged, branch deleted | PR #11 | recorded in M11 report | `docs/milestone-reports/M10.md` |
 | M11–M19 | — | not started | — | — | — |
 
 ## Log

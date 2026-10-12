@@ -21,5 +21,5 @@ phase is `docs/specification/MILESTONES/`; durable execution history lives in
 Rules: mark a phase complete only after branch merge is verified on `main`.
 Unavailable external prerequisites are recorded as `BLOCKED` with exact
 remediation, never as passed.
-| M10 | Atomic code change and patch engine | `milestone/m10-...` | in progress | — | — |
+| M10 | Atomic code change and patch engine | merged, branch deleted | merged | #11 | recorded in M11 report |
 | M11–M19 | (see specification) | not started | — | — | — |
