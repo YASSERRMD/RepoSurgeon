@@ -22,4 +22,5 @@ Rules: mark a phase complete only after branch merge is verified on `main`.
 Unavailable external prerequisites are recorded as `BLOCKED` with exact
 remediation, never as passed.
 | M10 | Atomic code change and patch engine | merged, branch deleted | merged | #11 | recorded in M11 report |
-| M11–M19 | (see specification) | not started | — | — | — |
+| M11 | Test discovery, execution and evidence collection | merged, branch deleted | merged | #12 | recorded in M12 report |
+| M12–M19 | (see specification) | not started | — | — | — |

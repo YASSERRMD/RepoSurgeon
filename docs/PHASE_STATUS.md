@@ -32,7 +32,8 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | M08 — Repository discovery, code search, long-context builder | merged, branch deleted | PR #9 | `0d2dca781200309523fde1e81c0db685835f5af4` | `docs/milestone-reports/M08.md` |
 | M09 — Issue investigation, plans, acceptance criteria | merged, branch deleted | PR #10 | `76592d4867c299ba842f3780139e03712bce6fe1` | `docs/milestone-reports/M09.md` |
 | M10 — Atomic code change and patch engine | merged, branch deleted | PR #11 | recorded in M11 report | `docs/milestone-reports/M10.md` |
-| M11–M19 | — | not started | — | — | — |
+| M11 — Test discovery, execution and evidence collection | merged, branch deleted | PR #12 | 9fd9e6b | `docs/milestone-reports/M11.md` |
+| M12–M19 | — | not started | — | — | — |
 
 ## Log
 
