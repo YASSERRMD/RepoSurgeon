@@ -172,6 +172,14 @@ func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, providerErr, nil)
 		return
 	}
+	if status := patchErrorStatus(err); status != http.StatusInternalServerError {
+		WriteError(w, r, &Error{
+			Status:  status,
+			Code:    patchErrorCode(err),
+			Message: err.Error(),
+		}, nil)
+		return
+	}
 	var planVerification *planError
 	if errors.As(err, &planVerification) {
 		WriteError(w, r, &Error{
