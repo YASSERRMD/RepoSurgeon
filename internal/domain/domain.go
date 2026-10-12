@@ -111,6 +111,12 @@ func HashBody(body string) string {
 // NewRunID returns a fresh run identifier.
 func NewRunID() string { return "run_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 
+// NewPatchAttemptID returns a fresh patch attempt identifier.
+func NewPatchAttemptID() string { return "pat_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
+// NewCheckpointID returns a fresh checkpoint identifier.
+func NewCheckpointID() string { return "chk_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
+
 // NewPlanID returns a fresh plan identifier.
 func NewPlanID() string { return "pln_" + strings.ReplaceAll(uuidString(), "-", "")[:20] }
 

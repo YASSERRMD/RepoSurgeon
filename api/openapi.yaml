@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.10.0
+  version: 0.11.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -60,6 +60,8 @@ tags:
     description: Repository index and context builder
   - name: plans
     description: Typed investigation plans and approvals
+  - name: patches
+    description: Atomic code changes and checkpoints
 
 paths:
   /health/live:
@@ -1918,6 +1920,166 @@ paths:
                   request_id: req_0123456789abcdef
 
 
+  /api/v1/runs/{run_id}/patches:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: applyPatch
+      summary: Apply a unified diff inside the run workspace
+      description: |
+        Applies atomically: every hunk is verified against the file content and
+        any failure restores the workspace to its pre-patch state. Protected
+        paths are refused, and stale context returns 409.
+      tags: [patches]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSubmission'
+            example:
+              workspace_id: wsp_1a2b3c4d5e6f7g8h9i0j
+              unified_diff: "diff --git a/internal/api/list.go b/internal/api/list.go\n--- a/internal/api/list.go\n+++ b/internal/api/list.go\n@@ -1,3 +1,3 @@\n package api\n \n-func List() int { return 0 }\n+func List() int { return 42 }\n"
+      responses:
+        '201':
+          description: Patch applied with before/after hashes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Protected path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: protected_path
+                  message: 'patch: path is protected and requires a policy exception'
+                  request_id: req_0123456789abcdef
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The diff does not match the file content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: diff_context_mismatch
+                  message: 'patch: hunk context does not match the file: expected "func List() int { return 999 }" at line 3'
+                  request_id: req_0123456789abcdef
+        '413':
+          description: Patch or file exceeds the size limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/runs/{run_id}/diff:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRunDiff
+      summary: Get the workspace diff and record a checkpoint
+      tags: [patches]
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Unified diff with per-file hashes and a checkpoint id.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [diff, checkpoint_id, file_hashes, project_id]
+                properties:
+                  diff:
+                    type: string
+                  checkpoint_id:
+                    type: string
+                  file_hashes:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  project_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/checkpoints/{checkpoint_id}/restore:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: checkpoint_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: restoreCheckpoint
+      summary: Restore a checkpoint recorded before a patch attempt
+      tags: [patches]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '200':
+          description: Checkpoint restored; current hashes are reported for comparison.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkpoint_id, file_hashes, current_hashes, restored]
+                properties:
+                  checkpoint_id:
+                    type: string
+                  file_hashes:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  current_hashes:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  restored:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
 components:
   schemas:
     LiveStatus:
@@ -3012,6 +3174,69 @@ components:
         reason:
           type: string
           maxLength: 2000
+
+    PatchSubmission:
+      type: object
+      required: [workspace_id, unified_diff]
+      properties:
+        workspace_id:
+          type: string
+        unified_diff:
+          type: string
+          minLength: 1
+
+    PatchResult:
+      type: object
+      required: [attempt, paths]
+      properties:
+        attempt:
+          $ref: '#/components/schemas/PatchAttempt'
+        paths:
+          type: array
+          items:
+            type: string
+
+    PatchAttempt:
+      type: object
+      required: [id, path, action, before_sha256, after_sha256, hunks, created_at]
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        action:
+          type: string
+          enum: [modified, created, deleted, renamed]
+        before_sha256:
+          type: string
+          description: Empty when the file did not exist.
+        after_sha256:
+          type: string
+          description: Empty when the file was deleted.
+        hunks:
+          type: integer
+        created_at:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatchFileResult'
+
+    PatchFileResult:
+      type: object
+      required: [path, action, before_sha256, after_sha256, hunks]
+      properties:
+        path:
+          type: string
+        action:
+          type: string
+          enum: [modified, created, deleted, renamed]
+        before_sha256:
+          type: string
+        after_sha256:
+          type: string
+        hunks:
+          type: integer
 
     Error:
       type: object
