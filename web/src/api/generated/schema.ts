@@ -904,6 +904,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** List checks recorded for a run */
+        get: operations["listChecks"];
+        put?: never;
+        /**
+         * Execute verified test/build command profiles
+         * @description Runs only registered profiles through the isolated runner. The verdict
+         *     is derived from exit codes; a required profile that did not run or an
+         *     unknown profile blocks the run.
+         */
+        post: operations["runChecks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/checks/{check_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get the parsed result and log checksum of one check */
+        get: operations["getCheckLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1449,6 +1494,35 @@ export interface components {
             before_sha256: string;
             after_sha256: string;
             hunks: number;
+        };
+        CheckRunRequest: {
+            workspace_id: string;
+            /** @description Profiles to run; defaults to every required profile. */
+            profiles?: ("go.test" | "go.build" | "go.vet" | "npm.test" | "npm.typecheck" | "npm.lint" | "lint.go" | "python.test")[];
+        };
+        Check: {
+            id: string;
+            run_id: string;
+            profile: string;
+            /** @enum {string} */
+            status: "passed" | "failed" | "rejected" | "timed_out" | "missing";
+            exit_code?: number | null;
+            duration_ms: number;
+            required: boolean;
+            /** @enum {string} */
+            verdict: "green" | "red" | "blocked";
+            failure_groups?: components["schemas"]["FailureGroup"][];
+            /** @description Checksum of the bounded raw log for provenance. */
+            raw_log_sha256: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        FailureGroup: {
+            path?: string;
+            line?: number;
+            message: string;
+            /** @enum {string} */
+            kind: "test_failure" | "build_failure" | "lint" | "typecheck" | "sandbox";
         };
         Error: {
             error: {
@@ -3923,6 +3997,138 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Check results, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        run_id: string;
+                        project_id: string;
+                        items: components["schemas"]["Check"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runChecks: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "workspace_id": "wsp_1a2b3c4d5e6f7g8h9i0j",
+                 *       "profiles": [
+                 *         "go.test",
+                 *         "go.build",
+                 *         "npm.test"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CheckRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Checks executed with a deterministic verdict. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        run_id: string;
+                        /** @enum {string} */
+                        verdict: "green" | "red";
+                        items: components["schemas"]["Check"][];
+                    };
+                };
+            };
+            /** @description Unknown profile. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "validation_failed",
+                     *         "message": "unknown command profile rm -rf /",
+                     *         "request_id": "req_0123456789abcdef"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description Check service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCheckLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                check_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Check detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Check"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };

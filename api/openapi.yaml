@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.11.0
+  version: 0.12.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -62,6 +62,8 @@ tags:
     description: Typed investigation plans and approvals
   - name: patches
     description: Atomic code changes and checkpoints
+  - name: checks
+    description: Test discovery, execution and evidence
 
 paths:
   /health/live:
@@ -2080,6 +2082,129 @@ paths:
           $ref: '#/components/responses/NotFound'
 
 
+  /api/v1/runs/{run_id}/checks:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: runChecks
+      summary: Execute verified test/build command profiles
+      description: |
+        Runs only registered profiles through the isolated runner. The verdict
+        is derived from exit codes; a required profile that did not run or an
+        unknown profile blocks the run.
+      tags: [checks]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRunRequest'
+            example:
+              workspace_id: wsp_1a2b3c4d5e6f7g8h9i0j
+              profiles: [go.test, go.build, npm.test]
+      responses:
+        '201':
+          description: Checks executed with a deterministic verdict.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, verdict, items]
+                properties:
+                  run_id:
+                    type: string
+                  verdict:
+                    type: string
+                    enum: [green, red]
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Check'
+        '400':
+          description: Unknown profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: validation_failed
+                  message: unknown command profile rm -rf /
+                  request_id: req_0123456789abcdef
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Check service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: listChecks
+      summary: List checks recorded for a run
+      tags: [checks]
+      responses:
+        '200':
+          description: Check results, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, project_id, items]
+                properties:
+                  run_id:
+                    type: string
+                  project_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Check'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/checks/{check_id}/logs:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: check_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getCheckLogs
+      summary: Get the parsed result and log checksum of one check
+      tags: [checks]
+      responses:
+        '200':
+          description: Check detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Check'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
 components:
   schemas:
     LiveStatus:
@@ -3237,6 +3362,66 @@ components:
           type: string
         hunks:
           type: integer
+
+    CheckRunRequest:
+      type: object
+      required: [workspace_id]
+      properties:
+        workspace_id:
+          type: string
+        profiles:
+          type: array
+          items:
+            type: string
+            enum: [go.test, go.build, go.vet, npm.test, npm.typecheck, npm.lint, lint.go, python.test]
+          description: Profiles to run; defaults to every required profile.
+
+    Check:
+      type: object
+      required: [id, run_id, profile, status, duration_ms, required, verdict, raw_log_sha256, created_at]
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        profile:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed, rejected, timed_out, missing]
+        exit_code:
+          type: [integer, 'null']
+        duration_ms:
+          type: integer
+        required:
+          type: boolean
+        verdict:
+          type: string
+          enum: [green, red, blocked]
+        failure_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/FailureGroup'
+        raw_log_sha256:
+          type: string
+          description: Checksum of the bounded raw log for provenance.
+        created_at:
+          type: string
+          format: date-time
+
+    FailureGroup:
+      type: object
+      required: [message, kind]
+      properties:
+        path:
+          type: string
+        line:
+          type: integer
+        message:
+          type: string
+        kind:
+          type: string
+          enum: [test_failure, build_failure, lint, typecheck, sandbox]
 
     Error:
       type: object

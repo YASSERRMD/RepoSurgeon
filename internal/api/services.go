@@ -172,6 +172,15 @@ func writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, providerErr, nil)
 		return
 	}
+	var checkValidation *checkError
+	if errors.As(err, &checkValidation) {
+		WriteError(w, r, &Error{
+			Status:  http.StatusBadRequest,
+			Code:    "validation_failed",
+			Message: checkValidation.message,
+		}, nil)
+		return
+	}
 	if status := patchErrorStatus(err); status != http.StatusInternalServerError {
 		WriteError(w, r, &Error{
 			Status:  status,
