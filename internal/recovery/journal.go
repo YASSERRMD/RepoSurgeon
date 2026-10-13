@@ -82,6 +82,14 @@ func (m *memoryJournal) Append(_ context.Context, event Event) error {
 	if event.ID == "" {
 		return ErrJournalInvalid
 	}
+	// The journal is the source of truth for when something happened, so an
+	// entry without a timestamp is stamped here rather than trusted.
+	if event.CreatedAt == "" {
+		event.CreatedAt = nowRFC3339()
+	}
+	if event.ActorType == "" {
+		event.ActorType = "system"
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.items[event.RunID] = append(m.items[event.RunID], event)
