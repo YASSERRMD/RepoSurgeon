@@ -23,6 +23,11 @@ import type {
   PlanDecision,
   PlanSubmission,
   PlanView,
+  RecoverRequest,
+  RecoverResponse,
+  RecoveryView,
+  RollbackRequest,
+  RollbackResponse,
   Project,
   ProjectCreate,
   ProjectPage,
@@ -696,6 +701,52 @@ export class HealthClient {
     return this.call<PlanView>({
       method: 'POST',
       path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/plan/approve`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * getRecovery returns the recovery state of a run: the journal, the attempt
+   * history, the bounded budgets, the effect receipts and the known-good
+   * checkpoints. Nothing here is derived locally, so the timeline an operator
+   * reads is the one the server journalled.
+   */
+  getRecovery(runId: string, options?: RequestOptions): Promise<RecoveryView> {
+    return this.call<RecoveryView>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/recovery`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * recoverRun plans the next bounded repair attempt. The server refuses with
+   * 409 `recovery_loop_detected` when a loop is proven and with 429
+   * `recovery_retry_exhausted` when the budget is spent; both carry the
+   * evidence that stopped the run, which the UI shows instead of retrying.
+   */
+  recoverRun(runId: string, body: RecoverRequest, key: string): Promise<RecoverResponse> {
+    return this.call<RecoverResponse>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/recover`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * rollbackRun restores the workspace to a known-good checkpoint. The effect
+   * id makes the restore idempotent, so a replayed request answers the
+   * recorded outcome with `duplicate: true` rather than writing the workspace
+   * a second time.
+   */
+  rollbackRun(runId: string, body: RollbackRequest, key: string): Promise<RollbackResponse> {
+    return this.call<RollbackResponse>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/rollback`,
       body,
       idempotencyKey: key,
     });

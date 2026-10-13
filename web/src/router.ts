@@ -9,6 +9,7 @@ import MembersView from '@/views/MembersView.vue';
 import OrganizationsView from '@/views/OrganizationsView.vue';
 import PlanView from '@/views/PlanView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
+import RunRecoveryView from '@/views/RunRecoveryView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
 import ToolsView from '@/views/ToolsView.vue';
 import WorkspaceSearchView from '@/views/WorkspaceSearchView.vue';
@@ -107,6 +108,15 @@ export const routes: RouteRecordRaw[] = [
     name: 'plan-inspector',
     component: PlanView,
     meta: { title: 'Plan inspector', requiresAuth: true },
+  },
+  {
+    // The recovery journal is readable by any member; planning an attempt or
+    // rolling the workspace back is gated by the run.execute permission inside
+    // the view and by the API, which answers 403 for a member without it.
+    path: '/runs/:runId/recovery',
+    name: 'run-recovery',
+    component: RunRecoveryView,
+    meta: { title: 'Recovery inspector', requiresAuth: true },
   },
 ];
 
