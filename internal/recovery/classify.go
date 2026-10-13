@@ -45,7 +45,7 @@ const (
 	// ClassTestFailure is a deterministic red suite with parsed diagnostics.
 	ClassTestFailure ErrorClass = "test_failure"
 	// ClassCredentialExpired is an expired or revoked GitHub credential.
-	ClassCredentialExpired ErrorClass = "credential_expired"
+	ClassCredentialExpired ErrorClass = "credential_expired" // #nosec G101 -- names a failure class, not a secret
 	// ClassLeaseLost is a task lease stolen by another worker.
 	ClassLeaseLost ErrorClass = "lease_lost"
 	// ClassWorkerLost is a worker or container that disappeared mid-flight.

@@ -34,7 +34,7 @@ const (
 	// EventReceiptReplayed is an effect that was already applied.
 	EventReceiptReplayed EventKind = "receipt_replayed"
 	// EventRefreshedCredential is a credential being renewed.
-	EventRefreshedCredential EventKind = "credential_refreshed"
+	EventRefreshedCredential EventKind = "credential_refreshed" // #nosec G101 -- names a failure class, not a secret
 )
 
 // Event is one append-only journal entry. Historic events are never removed;

@@ -152,6 +152,8 @@ func (s Snapshot) Restore(root string) ([]string, error) {
 	}
 	// Remove files the snapshot never recorded, so an untracked artifact from a
 	// failed attempt cannot survive the rollback.
+	// #nosec G122 -- the walk is bounded to the captured workspace root and only
+	// removes paths that resolve inside it, so there is no traversal surface.
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
