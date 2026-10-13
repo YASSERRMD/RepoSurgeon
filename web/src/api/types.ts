@@ -164,9 +164,45 @@ export type WorkspaceSymbolLookupResponse = JsonOf<
 >;
 export type RunContextResponse = JsonOf<'/api/v1/runs/{run_id}/context', 200>;
 export type RunContextRefreshResponse = JsonOf<'/api/v1/runs/{run_id}/context/refresh', 201>;
+export type RecoveryViewResponse = JsonOf<'/api/v1/runs/{run_id}/recovery', 200>;
+export type RecoverResponse = JsonOf<'/api/v1/runs/{run_id}/recover', 201>;
+export type RollbackResponse = JsonOf<'/api/v1/runs/{run_id}/rollback', 200>;
 export type PlanResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 200>;
 export type PlanSaveResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 201>;
 export type PlanDecisionResponse = JsonOf<'/api/v1/runs/{run_id}/plan/approve', 200>;
 
 /** LanguageSummary is one row of the per-language file counts in the index. */
 export type LanguageSummary = WorkspaceFileListResponse['languages'][number];
+
+/** ContractRecoveryView is the documented recovery projection of a run. */
+export type ContractRecoveryView = components['schemas']['RecoveryView'];
+export type RecoveryView = ContractRecoveryView;
+
+/** RecoveryEvent is one journalled entry of the state recovery journal. */
+export type RecoveryEvent = RecoveryView['timeline'][number];
+/** RecoveryAttempt is one recorded repair attempt. */
+export type RecoveryAttempt = RecoveryView['attempts'][number];
+/** RecoveryBudget is the bounded attempt budget of one error class. */
+export type RecoveryBudget = RecoveryView['budgets'][number];
+/** EffectReceipt proves an effect was already applied. */
+export type EffectReceipt = RecoveryView['receipts'][number];
+/** CheckpointSummary describes one known-good snapshot. */
+export type CheckpointSummary = RecoveryView['checkpoints'][number];
+
+/** FailureClass is an error class the recovery engine can bound. */
+export type FailureClass = RecoverRequest['class'];
+
+/** RecoverRequest asks the server to plan the next bounded attempt. */
+export type RecoverRequest = components['schemas']['RecoverRequest'];
+/** RollbackRequest restores the workspace to a snapshot. */
+export type RollbackRequest = components['schemas']['RollbackRequest'];
+
+/** RecoveryKind is the journal kind the server recorded. */
+export type RecoveryKind = RecoveryEvent['kind'];
+/** RecoveryAttemptKind is what one attempt did. */
+export type RecoveryAttemptKind = RecoveryAttempt['kind'];
+
+/** ContractRecoverResponse is the server's answer to a bounded recovery. */
+export type ContractRecoverResponse = components['schemas']['RecoverResponse'];
+/** ContractRollbackResponse is the server's answer to a rollback. */
+export type ContractRollbackResponse = components['schemas']['RollbackResponse'];

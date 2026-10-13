@@ -56,7 +56,9 @@ type Options struct {
 	// Patches exposes the M10 patch engine and checkpoints.
 	Patches *PatchService
 	// Checks exposes the M11 check profiles, runner and store.
-	Checks    *CheckService
+	Checks *CheckService
+	// Recovery exposes the M12 repair loop, journal and rollback.
+	Recovery  *RecoveryService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -82,6 +84,7 @@ type Server struct {
 	plans      *PlanService
 	patches    *PatchService
 	checks     *CheckService
+	recovery   *RecoveryService
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -139,6 +142,7 @@ func NewServer(opts Options) (*Server, error) {
 		plans:      opts.Plans,
 		patches:    opts.Patches,
 		checks:     opts.Checks,
+		recovery:   opts.Recovery,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -292,6 +296,11 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodGet, "/api/v1/approvals", s.handleListApprovals)
 		router.Handle(http.MethodPost, "/api/v1/approvals", s.handleCreateApprovalRequest)
 		router.Handle(http.MethodPost, "/api/v1/approvals/{approval_id}/decide", s.handleDecideApproval)
+	}
+	if s.runs != nil {
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/recover", s.handleRecover)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/recovery", s.handleGetRecovery)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/rollback", s.handleRollback)
 	}
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/checks", s.handleRunChecks)

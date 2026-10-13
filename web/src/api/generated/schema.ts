@@ -949,6 +949,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan the next bounded repair attempt
+         * @description Records one bounded retry for the run. A proven loop (the same diff
+         *     applied again, the same failure signature recurring, or attempts with
+         *     no measurable change to the failing-test set) stops the run as blocked
+         *     and the evidence is returned instead of spending another attempt.
+         */
+        post: operations["recoverRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Read the recovery timeline, budgets and checkpoints of a run */
+        get: operations["getRecovery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore the workspace to a known-good checkpoint
+         * @description Rewrites the workspace to the snapshot state and verifies the result.
+         *     The effect_id makes the restore idempotent: a replay of the same
+         *     effect_id returns the recorded outcome without writing the workspace a
+         *     second time.
+         */
+        post: operations["rollbackRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1523,6 +1592,110 @@ export interface components {
             message: string;
             /** @enum {string} */
             kind: "test_failure" | "build_failure" | "lint" | "typecheck" | "sandbox";
+        };
+        RecoverRequest: {
+            workspace_id?: string;
+            /** @enum {string} */
+            class?: "rate_limit" | "timeout" | "provider_server" | "provider_transport" | "provider_response" | "tool_error" | "patch_conflict" | "patch_rejected" | "test_failure" | "credential_expired" | "lease_lost" | "worker_lost" | "sse_interrupted" | "unknown";
+            reason?: string;
+            checkpoint_id?: string;
+        };
+        RecoverResponse: {
+            run_id: string;
+            attempt: number;
+            budget: {
+                run_id?: string;
+                class?: string;
+                allowed?: number;
+                used?: number;
+                exhaust?: boolean;
+            };
+            delay_ms: number;
+            hypothesis: components["schemas"]["Hypothesis"];
+        };
+        Hypothesis: {
+            class?: string;
+            rationale?: string;
+            profiles?: string[];
+            fingerprint?: string;
+        };
+        RecoveryView: {
+            run_id: string;
+            run_state: string;
+            budgets: components["schemas"]["RecoveryBudget"][];
+            attempts: components["schemas"]["RecoveryAttempt"][];
+            timeline: components["schemas"]["RecoveryEvent"][];
+            receipts: components["schemas"]["EffectReceipt"][];
+            checkpoints: components["schemas"]["CheckpointSummary"][];
+            next_attempt: number;
+        };
+        RecoveryBudget: {
+            class?: string;
+            allowed?: number;
+            used?: number;
+            remaining?: number;
+            exhausted?: boolean;
+        };
+        RecoveryAttempt: {
+            run_id?: string;
+            number?: number;
+            /** @enum {string} */
+            kind?: "patched" | "noop" | "blocked";
+            fingerprint?: string;
+            patch_fingerprint?: string;
+            failing_count?: number;
+            verdict?: string;
+            note?: string;
+        };
+        RecoveryEvent: {
+            id?: string;
+            run_id?: string;
+            /** @enum {string} */
+            kind?: "retry_scheduled" | "retry_exhausted" | "loop_detected" | "blocked" | "recovered" | "rollback" | "lease_recovered" | "receipt_replayed" | "credential_refreshed";
+            attempt?: number;
+            class?: string;
+            reason?: string;
+            evidence?: {
+                [key: string]: unknown;
+            };
+            actor_type?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        EffectReceipt: {
+            id?: string;
+            run_id?: string;
+            operation?: string;
+            effect_id?: string;
+            status?: string;
+            result?: {
+                [key: string]: unknown;
+            };
+            created_at?: string;
+        };
+        CheckpointSummary: {
+            id?: string;
+            run_id?: string;
+            verdict?: string;
+            file_count?: number;
+            created_at?: string;
+        };
+        RollbackRequest: {
+            /** @description Unique effect identifier; the same id can never restore twice. */
+            effect_id: string;
+            /** @description Snapshot to restore; when empty the newest snapshot is used. */
+            checkpoint_id?: string;
+            workspace_id?: string;
+            reason?: string;
+        };
+        RollbackResponse: {
+            run_id: string;
+            checkpoint_id: string;
+            restored_files: string[];
+            drift_before: number;
+            drift_after: number;
+            receipt?: components["schemas"]["EffectReceipt"];
+            duplicate: boolean;
         };
         Error: {
             error: {
@@ -4130,6 +4303,206 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    recoverRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "workspace_id": "wsp_1a2b3c4d5e6f7g8h9i0j",
+                 *       "class": "test_failure",
+                 *       "reason": "Repair the red suite from the last diagnostic"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecoverRequest"];
+            };
+        };
+        responses: {
+            /** @description The next attempt is planned and journalled. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoverResponse"];
+                };
+            };
+            /** @description Unknown failure class. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description The run is blocked because a repair loop is proven. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "recovery_loop_detected",
+                     *         "message": "diff diff_a1b2c3d4e5f6 was already applied; applying it again on attempt 2 would repeat the same change",
+                     *         "request_id": "req_0123456789abcdef",
+                     *         "details": {
+                     *           "loop": {
+                     *             "kind": "identical_patch",
+                     *             "attempts": 2,
+                     *             "fingerprint": "diff_a1b2c3d4e5f6",
+                     *             "evidence": "diff diff_a1b2c3d4e5f6 was already applied"
+                     *           },
+                     *           "attempt": 2,
+                     *           "fingerprint": "diff_a1b2c3d4e5f6"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The bounded retry budget for the class is spent. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Recovery service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRecovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recovery state of the run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Recovery service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rollbackRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "effect_id": "effect_rollback_1",
+                 *       "reason": "Suite deteriorated after the second patch"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description The workspace was restored (or the restore replayed). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollbackResponse"];
+                };
+            };
+            /** @description effect_id is missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No checkpoint is available for this run. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The workspace could not be resolved. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

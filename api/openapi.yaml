@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.12.0
+  version: 0.13.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -64,6 +64,8 @@ tags:
     description: Atomic code changes and checkpoints
   - name: checks
     description: Test discovery, execution and evidence
+  - name: recovery
+    description: Bounded retries, loop detection and rollback
 
 paths:
   /health/live:
@@ -2204,6 +2206,171 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/runs/{run_id}/recover:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: recoverRun
+      summary: Plan the next bounded repair attempt
+      description: |
+        Records one bounded retry for the run. A proven loop (the same diff
+        applied again, the same failure signature recurring, or attempts with
+        no measurable change to the failing-test set) stops the run as blocked
+        and the evidence is returned instead of spending another attempt.
+      tags: [recovery]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoverRequest'
+            example:
+              workspace_id: wsp_1a2b3c4d5e6f7g8h9i0j
+              class: test_failure
+              reason: Repair the red suite from the last diagnostic
+      responses:
+        '201':
+          description: The next attempt is planned and journalled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoverResponse'
+        '400':
+          description: Unknown failure class.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The run is blocked because a repair loop is proven.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: recovery_loop_detected
+                  message: diff diff_a1b2c3d4e5f6 was already applied; applying it again on attempt 2 would repeat the same change
+                  request_id: req_0123456789abcdef
+                  details:
+                    loop:
+                      kind: identical_patch
+                      attempts: 2
+                      fingerprint: diff_a1b2c3d4e5f6
+                      evidence: diff diff_a1b2c3d4e5f6 was already applied
+                    attempt: 2
+                    fingerprint: diff_a1b2c3d4e5f6
+        '429':
+          description: The bounded retry budget for the class is spent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Recovery service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/runs/{run_id}/recovery:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRecovery
+      summary: Read the recovery timeline, budgets and checkpoints of a run
+      tags: [recovery]
+      responses:
+        '200':
+          description: Recovery state of the run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Recovery service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/runs/{run_id}/rollback:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: rollbackRun
+      summary: Restore the workspace to a known-good checkpoint
+      description: |
+        Rewrites the workspace to the snapshot state and verifies the result.
+        The effect_id makes the restore idempotent: a replay of the same
+        effect_id returns the recorded outcome without writing the workspace a
+        second time.
+      tags: [recovery]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+            example:
+              effect_id: effect_rollback_1
+              reason: Suite deteriorated after the second patch
+      responses:
+        '200':
+          description: The workspace was restored (or the restore replayed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackResponse'
+        '400':
+          description: effect_id is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No checkpoint is available for this run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The workspace could not be resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 
 components:
   schemas:
@@ -3422,6 +3589,219 @@ components:
         kind:
           type: string
           enum: [test_failure, build_failure, lint, typecheck, sandbox]
+
+    RecoverRequest:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+        class:
+          type: string
+          enum: [rate_limit, timeout, provider_server, provider_transport, provider_response, tool_error, patch_conflict, patch_rejected, test_failure, credential_expired, lease_lost, worker_lost, sse_interrupted, unknown]
+        reason:
+          type: string
+        checkpoint_id:
+          type: string
+
+    RecoverResponse:
+      type: object
+      required: [run_id, attempt, budget, delay_ms, hypothesis]
+      properties:
+        run_id:
+          type: string
+        attempt:
+          type: integer
+        budget:
+          type: object
+          properties:
+            run_id:
+              type: string
+            class:
+              type: string
+            allowed:
+              type: integer
+            used:
+              type: integer
+            exhaust:
+              type: boolean
+        delay_ms:
+          type: integer
+        hypothesis:
+          $ref: '#/components/schemas/Hypothesis'
+
+    Hypothesis:
+      type: object
+      properties:
+        class:
+          type: string
+        rationale:
+          type: string
+        profiles:
+          type: array
+          items:
+            type: string
+        fingerprint:
+          type: string
+
+    RecoveryView:
+      type: object
+      required: [run_id, run_state, budgets, attempts, timeline, receipts, checkpoints, next_attempt]
+      properties:
+        run_id:
+          type: string
+        run_state:
+          type: string
+        budgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecoveryBudget'
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecoveryAttempt'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecoveryEvent'
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/EffectReceipt'
+        checkpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckpointSummary'
+        next_attempt:
+          type: integer
+
+    RecoveryBudget:
+      type: object
+      properties:
+        class:
+          type: string
+        allowed:
+          type: integer
+        used:
+          type: integer
+        remaining:
+          type: integer
+        exhausted:
+          type: boolean
+
+    RecoveryAttempt:
+      type: object
+      properties:
+        run_id:
+          type: string
+        number:
+          type: integer
+        kind:
+          type: string
+          enum: [patched, noop, blocked]
+        fingerprint:
+          type: string
+        patch_fingerprint:
+          type: string
+        failing_count:
+          type: integer
+        verdict:
+          type: string
+        note:
+          type: string
+
+    RecoveryEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        kind:
+          type: string
+          enum: [retry_scheduled, retry_exhausted, loop_detected, blocked, recovered, rollback, lease_recovered, receipt_replayed, credential_refreshed]
+        attempt:
+          type: integer
+        class:
+          type: string
+        reason:
+          type: string
+        evidence:
+          type: object
+          additionalProperties: true
+        actor_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    EffectReceipt:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        operation:
+          type: string
+        effect_id:
+          type: string
+        status:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+
+    CheckpointSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        verdict:
+          type: string
+        file_count:
+          type: integer
+        created_at:
+          type: string
+
+    RollbackRequest:
+      type: object
+      required: [effect_id]
+      properties:
+        effect_id:
+          type: string
+          description: Unique effect identifier; the same id can never restore twice.
+        checkpoint_id:
+          type: string
+          description: Snapshot to restore; when empty the newest snapshot is used.
+        workspace_id:
+          type: string
+        reason:
+          type: string
+
+    RollbackResponse:
+      type: object
+      required: [run_id, checkpoint_id, restored_files, drift_before, drift_after, duplicate]
+      properties:
+        run_id:
+          type: string
+        checkpoint_id:
+          type: string
+        restored_files:
+          type: array
+          items:
+            type: string
+        drift_before:
+          type: integer
+        drift_after:
+          type: integer
+        receipt:
+          $ref: '#/components/schemas/EffectReceipt'
+        duplicate:
+          type: boolean
 
     Error:
       type: object
