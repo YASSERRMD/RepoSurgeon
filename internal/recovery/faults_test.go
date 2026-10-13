@@ -43,7 +43,7 @@ func TestFaultsProvider429IsBoundedAndBackedOff(t *testing.T) {
 		t.Fatalf("429 must be retried within a bound, MaxAttempts = %d", policy.MaxAttempts)
 	}
 	if !policy.RespectRetryAfter {
-		t.Fatal("the rate limit policy must honour Retry-After")
+		t.Fatal("the rate limit policy must honor Retry-After")
 	}
 	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
 		if got := Delay(policy, attempt, 90*time.Second); got > policy.MaxDelay {
