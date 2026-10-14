@@ -82,14 +82,16 @@ func seedIndex(t *testing.T, dir string) *Index {
 	pool := openIndexPool(t)
 	ix := New(pool, dir)
 	ctx := context.Background()
-	// Only derived index rows are cleared; organizations and audit rows are
-	// append-only or shared across tests.
+	// Only this test's derived rows are cleared: organizations and audit rows
+	// are append-only or shared across tests, and wiping the whole table would
+	// destroy the rows of the api package's tests, which run against the same
+	// database in parallel.
+	ix.WorkspaceID = ids.MustNew("wsp")
 	for _, table := range []string{"repo_files", "repo_symbols"} {
-		if _, err := pool.Exec(ctx, "DELETE FROM "+table); err != nil {
+		if _, err := pool.Exec(ctx, "DELETE FROM "+table+" WHERE workspace_id = $1", ix.WorkspaceID); err != nil {
 			t.Fatalf("clean %s: %v", table, err)
 		}
 	}
-	ix.WorkspaceID = ids.MustNew("wsp")
 	orgID := ids.MustNew("org")
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO organizations (id, slug, name) VALUES ($1, $2, $3)
