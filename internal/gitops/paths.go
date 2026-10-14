@@ -1,6 +1,10 @@
 package gitops
 
-import "path"
+import (
+	"path"
+
+	"github.com/YASSERRMD/RepoSurgeon/internal/checks"
+)
 
 // DefaultProtectedPaths are the paths a RepoSurgeon-produced change may never
 // touch without an explicit policy override. The list is a backstop for the
@@ -42,4 +46,11 @@ func DefaultAllowedPaths() []string {
 		"web/src/",
 		"web/tests/",
 	}
+}
+
+// RequiredProfiles are the check profiles every pushed change must have run
+// green. They are read from the verified profile registry so the gate and the
+// check service can never disagree about what "clean" means.
+func RequiredProfiles() []string {
+	return checks.NewProfileSet().Required()
 }
