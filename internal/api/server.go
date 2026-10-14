@@ -58,7 +58,9 @@ type Options struct {
 	// Checks exposes the M11 check profiles, runner and store.
 	Checks *CheckService
 	// Recovery exposes the M12 repair loop, journal and rollback.
-	Recovery  *RecoveryService
+	Recovery *RecoveryService
+	// PRs exposes the M13 pull-request lifecycle.
+	PRs       *PRService
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -85,6 +87,7 @@ type Server struct {
 	patches    *PatchService
 	checks     *CheckService
 	recovery   *RecoveryService
+	prs        *PRService
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -143,6 +146,7 @@ func NewServer(opts Options) (*Server, error) {
 		patches:    opts.Patches,
 		checks:     opts.Checks,
 		recovery:   opts.Recovery,
+		prs:        opts.PRs,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -301,6 +305,12 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/recover", s.handleRecover)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/recovery", s.handleGetRecovery)
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/rollback", s.handleRollback)
+	}
+	if s.runs != nil {
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/pr", s.handleOpenPullRequest)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/pr", s.handleGetPullRequest)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/merge", s.handleMergePullRequest)
+		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/abandon", s.handleAbandonPullRequest)
 	}
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/checks", s.handleRunChecks)
