@@ -24,4 +24,5 @@ remediation, never as passed.
 | M10 | Atomic code change and patch engine | merged, branch deleted | merged | #11 | recorded in M11 report |
 | M11 | Test discovery, execution and evidence collection | merged, branch deleted | merged | #12 | recorded in M12 report |
 | M12 | Iterative debugging, recovery and state reconciliation | merged, branch deleted | merged | #13 | recorded in M13 report |
-| M13–M19 | (see specification) | not started | — | — | — |
+| M13 | Git commits, pull requests, CI review and safe merge | merged, branch deleted | merged | #14 | recorded in M14 report |
+| M14–M19 | (see specification) | not started | — | — | — |
