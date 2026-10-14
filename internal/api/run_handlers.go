@@ -253,7 +253,18 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, paramErr, nil)
 		return
 	}
-	page, err := s.runs.ListForProject(r.Context(), projectID, limit, cursor)
+	// The state filter is a real query filter, not a client-side trim, so a
+	// filtered page is the filtered set.
+	stateFilter := strings.TrimSpace(r.URL.Query().Get("state"))
+	if stateFilter != "" && !agent.Known(stateFilter) {
+		WriteError(w, r, &Error{
+			Status:  http.StatusBadRequest,
+			Code:    "validation_failed",
+			Message: "state must be one of the known run states",
+		}, nil)
+		return
+	}
+	page, err := s.runs.ListForProject(r.Context(), projectID, limit, cursor, stateFilter)
 	if err != nil {
 		writeDomainError(w, r, err)
 		return

@@ -155,17 +155,26 @@ func (r *Runs) Transition(ctx context.Context, organizationID, runID, toState, r
 }
 
 // ListForProject returns a project's runs, newest first.
-func (r *Runs) ListForProject(ctx context.Context, projectID string, limit int, cursor string) (Page[Run], error) {
+func (r *Runs) ListForProject(ctx context.Context, projectID string, limit int, cursor string, states ...string) (Page[Run], error) {
 	ctx, cancel := withQueryTimeout(ctx)
 	defer cancel()
-	rows, err := r.pool.Query(ctx, `
+	// An optional state filter narrows the page the console shows. Empty means
+	// every state, and the filter is applied in SQL so the page is filtered
+	// before pagination rather than after it.
+	where := "project_id = $1"
+	args := []any{projectID}
+	if len(states) > 0 && states[0] != "" {
+		args = append(args, states[0])
+		where += fmt.Sprintf(" AND state = $%d", len(args))
+	}
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT id, organization_id, project_id, task_id, issue_id, state, coalesce(base_sha, ''),
 		       model_config, limits, policy, attempt, coalesce(created_by, ''),
 		       created_at, updated_at, started_at, finished_at
 		FROM runs
-		WHERE project_id = $1
-		ORDER BY created_at DESC, id DESC LIMIT $2`,
-		projectID, int64(clampLimit(limit)+1))
+		WHERE %s
+		ORDER BY created_at DESC, id DESC LIMIT $%d`, where, len(args)+1),
+		append(args, int64(clampLimit(limit)+1))...)
 	if err != nil {
 		return Page[Run]{}, fmt.Errorf("runs: list: %w", err)
 	}
