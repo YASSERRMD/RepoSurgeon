@@ -167,6 +167,11 @@ export type RunContextRefreshResponse = JsonOf<'/api/v1/runs/{run_id}/context/re
 export type RecoveryViewResponse = JsonOf<'/api/v1/runs/{run_id}/recovery', 200>;
 export type RecoverResponse = JsonOf<'/api/v1/runs/{run_id}/recover', 201>;
 export type RollbackResponse = JsonOf<'/api/v1/runs/{run_id}/rollback', 200>;
+export type PullRequestOpenResponse = JsonOf<'/api/v1/runs/{run_id}/pr', 201>;
+export type PullRequestReplayResponse = JsonOf<'/api/v1/runs/{run_id}/pr', 200>;
+export type PullRequestGetResponse = JsonOf<'/api/v1/runs/{run_id}/pr', 200>;
+export type MergeResultResponse = JsonOf<'/api/v1/runs/{run_id}/merge', 200>;
+export type AbandonResultResponse = JsonOf<'/api/v1/runs/{run_id}/abandon', 200>;
 export type PlanResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 200>;
 export type PlanSaveResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 201>;
 export type PlanDecisionResponse = JsonOf<'/api/v1/runs/{run_id}/plan/approve', 200>;
@@ -206,3 +211,33 @@ export type RecoveryAttemptKind = RecoveryAttempt['kind'];
 export type ContractRecoverResponse = components['schemas']['RecoverResponse'];
 /** ContractRollbackResponse is the server's answer to a rollback. */
 export type ContractRollbackResponse = components['schemas']['RollbackResponse'];
+
+/** ContractPullRequestView is the documented projection of a tracked pull request. */
+export type ContractPullRequestView = components['schemas']['PullRequestView'];
+export type PullRequestView = ContractPullRequestView;
+
+/** RemoteCheck is one real GitHub check run or status. */
+export type RemoteCheck = NonNullable<PullRequestView['checks']>[number];
+/** RemoteReview is one real GitHub review. */
+export type RemoteReview = NonNullable<PullRequestView['reviews']>[number];
+/** ComposedCommit is one atomic commit behind the pull request. */
+export type ComposedCommit = NonNullable<PullRequestView['commits']>[number];
+/** PullRequestState is the lifecycle state the server recorded. */
+export type PullRequestState = NonNullable<PullRequestView['state']>;
+
+/** CommitSpec is one logical change the operator composed. */
+export type CommitSpec = components['schemas']['CommitSpec'];
+/** LocalCheck is one locally executed check result. */
+export type LocalCheck = components['schemas']['LocalCheck'];
+
+/** OpenPullRequestBody opens one pull request for a run. */
+export type OpenPullRequestBody = components['schemas']['OpenPullRequestRequest'];
+/** MergePullRequestBody requests the merge of a tracked pull request. */
+export type MergePullRequestBody = components['schemas']['MergePullRequestBody'];
+/** AbandonBody closes a pull request without merging. */
+export type AbandonBody = components['schemas']['AbandonRequest'];
+
+/** MergeResult is the server's answer to a merge request. */
+export type MergeResult = components['schemas']['MergeResult'];
+/** GateDecision is the push or merge gate verdict with its reasons. */
+export type GateDecision = components['schemas']['GateDecision'];

@@ -52,11 +52,6 @@ func newTestIndex(t *testing.T) *index.Index {
 	t.Helper()
 	pool := openIndexPool(t)
 	ctx := context.Background()
-	for _, table := range []string{"repo_files", "repo_symbols"} {
-		if _, err := pool.Exec(ctx, "DELETE FROM "+table); err != nil {
-			t.Fatalf("clean %s: %v", table, err)
-		}
-	}
 	orgID := ids.MustNew("org")
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO organizations (id, slug, name) VALUES ($1, $2, $3)
@@ -65,7 +60,16 @@ func newTestIndex(t *testing.T) *index.Index {
 	}
 	dir := fixtureIndexWorkspace(t)
 	ix := index.New(pool, dir)
+	// The workspace id is stable for this package and the cleanup below removes
+	// only its derived rows. Wiping the whole table would destroy the rows of
+	// the index package's tests, which run against the same database in
+	// parallel under `go test ./...`.
 	ix.WorkspaceID = "wsp_ctx_1"
+	for _, table := range []string{"repo_files", "repo_symbols"} {
+		if _, err := pool.Exec(ctx, "DELETE FROM "+table+" WHERE workspace_id = $1", ix.WorkspaceID); err != nil {
+			t.Fatalf("clean %s: %v", table, err)
+		}
+	}
 	if _, err := ix.Rebuild(ctx, ix.WorkspaceID, orgID); err != nil {
 		t.Fatalf("Rebuild: %v", err)
 	}

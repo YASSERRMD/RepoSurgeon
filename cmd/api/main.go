@@ -164,6 +164,12 @@ func run() error {
 		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
 	})
 
+	// M13: pull-request lifecycle over the trusted GitHub transport. The
+	// installation token is held by the adapter here and never reaches a runner.
+	prService := api.NewStorePullRequestService(nil, pool, func(workspaceID string) string {
+		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
+	})
+
 	server, err := api.NewServer(api.Options{
 		Config: cfg,
 		DB:     pool,
@@ -192,6 +198,7 @@ func run() error {
 		Patches:    patchService,
 		Checks:     checkService,
 		Recovery:   recoveryService,
+		PRs:        prService,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

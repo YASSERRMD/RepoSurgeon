@@ -1018,6 +1018,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/pr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the tracked pull request of a run
+         * @description Returns the recorded pull request refreshed from GitHub, including its real check runs and reviews.
+         */
+        get: operations["getPullRequest"];
+        put?: never;
+        /**
+         * Compose the branch and open one pull request
+         * @description Runs the push gate first: every required check must have run green, the
+         *     secret scan must be clean, every changed path must be allowlisted and
+         *     the pinned base must not have moved unless the change was rebased and
+         *     retested. A refusal answers 400 with every rule that blocked the push.
+         *     The effect_id makes the create exactly-once: a replayed request answers
+         *     with the recorded pull request instead of opening a second one.
+         */
+        post: operations["openPullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge the pull request under an explicit human authorization
+         * @description The gate is evaluated against real GitHub state immediately before the
+         *     merge: required checks must have concluded success, the required
+         *     approvals must be recorded and a permitted human must authorize it. A
+         *     model identity, a bot identity and an empty authorization are refused.
+         */
+        post: operations["mergePullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close the pull request without merging
+         * @description Records why the change is abandoned and keeps the branch and its evidence. A merged pull request is never abandoned.
+         */
+        post: operations["abandonPullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1696,6 +1774,132 @@ export interface components {
             drift_after: number;
             receipt?: components["schemas"]["EffectReceipt"];
             duplicate: boolean;
+        };
+        OpenPullRequestRequest: {
+            workspace_id: string;
+            /** @description Unique effect identifier; the same id can never open two pull requests. */
+            effect_id: string;
+            head: string;
+            /** @description Branch the change targets; defaults to main. */
+            base?: string;
+            title: string;
+            issue_number?: number;
+            repo_owner: string;
+            repo_name: string;
+            summary?: string;
+            risks?: string[];
+            secret_scan_clean?: boolean;
+            pinned_sha?: string;
+            base_sha?: string;
+            files: string[];
+            checks: components["schemas"]["LocalCheck"][];
+            commits: components["schemas"]["CommitSpec"][];
+        };
+        LocalCheck: {
+            profile: string;
+            /** @enum {string} */
+            verdict: "green" | "red";
+            ran: boolean;
+            detail?: string;
+        };
+        CommitSpec: {
+            message: string;
+            paths: string[];
+        };
+        PullRequestView: {
+            id?: string;
+            run_id?: string;
+            number?: number;
+            url?: string;
+            repo_owner?: string;
+            repo_name?: string;
+            head_branch?: string;
+            base_branch?: string;
+            title?: string;
+            body?: string;
+            issue_number?: number;
+            /** @enum {string} */
+            state?: "open" | "merged" | "closed" | "blocked" | "abandoned";
+            checks?: components["schemas"]["RemoteCheck"][];
+            reviews?: components["schemas"]["RemoteReview"][];
+            approval_count?: number;
+            merge_state?: string;
+            blocked_reason?: string;
+            merge_sha?: string;
+            branch_deleted?: boolean;
+            commits?: components["schemas"]["ComposedCommit"][];
+            created_at?: string;
+            updated_at?: string;
+        };
+        RemoteCheck: {
+            name?: string;
+            /** @enum {string} */
+            status?: "queued" | "in_progress" | "completed";
+            /** @enum {string} */
+            conclusion?: "success" | "failure" | "cancelled" | "skipped" | "neutral";
+            details_url?: string;
+        };
+        RemoteReview: {
+            author?: string;
+            /** @enum {string} */
+            state?: "approved" | "changes_requested" | "commented";
+            commit_id?: string;
+        };
+        ComposedCommit: {
+            sha?: string;
+            message?: string;
+            author?: components["schemas"]["CommitIdentity"];
+            committer?: components["schemas"]["CommitIdentity"];
+            files?: string[];
+            created_at?: string;
+        };
+        CommitIdentity: {
+            name?: string;
+            email?: string;
+        };
+        MergePullRequestBody: {
+            /** @description Permitted human authorizing the merge; a model or bot identity is refused. */
+            authorized_by: string;
+            /**
+             * @description GitHub merge method, for example merge or squash.
+             * @default merge
+             */
+            method: string;
+            effect_id?: string;
+        };
+        MergeResult: {
+            run_id?: string;
+            pull_request?: components["schemas"]["PullRequestView"];
+            merge_action?: components["schemas"]["MergeAction"];
+            merge_sha?: string;
+            already_merged?: boolean;
+            decision?: components["schemas"]["GateDecision"];
+        };
+        MergeAction: {
+            id?: string;
+            run_id?: string;
+            pull_request_id?: string;
+            authorized_by?: string;
+            method?: string;
+            merge_sha?: string;
+            succeeded?: boolean;
+            outcome?: string;
+            effect_id?: string;
+            created_at?: string;
+        };
+        GateDecision: {
+            allowed?: boolean;
+            reasons?: string[];
+            /** @enum {string} */
+            stage?: "push" | "merge";
+        };
+        AbandonRequest: {
+            reason: string;
+        };
+        AbandonResult: {
+            run_id?: string;
+            pull_request?: components["schemas"]["PullRequestView"];
+            abandoned?: boolean;
         };
         Error: {
             error: {
@@ -4503,6 +4707,287 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getPullRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tracked pull request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The pull request service is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    openPullRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "workspace_id": "wsp_1a2b3c4d5e6f7g8h9i0j",
+                 *       "effect_id": "effect_open_1",
+                 *       "head": "agent/run-pr",
+                 *       "base": "main",
+                 *       "title": "m13: bound the pagination limit",
+                 *       "issue_number": 42,
+                 *       "repo_owner": "acme",
+                 *       "repo_name": "app",
+                 *       "summary": "Bound the limit before the offset.",
+                 *       "risks": [
+                 *         "The runner is not exercised in CI."
+                 *       ],
+                 *       "secret_scan_clean": true,
+                 *       "pinned_sha": "9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012",
+                 *       "base_sha": "9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012",
+                 *       "files": [
+                 *         "internal/api/list.go"
+                 *       ],
+                 *       "checks": [
+                 *         {
+                 *           "profile": "go.test",
+                 *           "verdict": "green",
+                 *           "ran": true
+                 *         },
+                 *         {
+                 *           "profile": "go.build",
+                 *           "verdict": "green",
+                 *           "ran": true
+                 *         }
+                 *       ],
+                 *       "commits": [
+                 *         {
+                 *           "message": "m13: bound the limit",
+                 *           "paths": [
+                 *             "internal/api/list.go"
+                 *           ]
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["OpenPullRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description A pull request already exists for this effect id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestView"];
+                };
+            };
+            /** @description The pull request was opened. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestView"];
+                };
+            };
+            /** @description The push gate refused the change. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "pr_push_refused",
+                     *         "message": "required check go.build did not run",
+                     *         "request_id": "req_0123456789abcdef",
+                     *         "details": {
+                     *           "stage": "push",
+                     *           "reasons": [
+                     *             "required check go.build did not run"
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description The pull request service is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    mergePullRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "authorized_by": "maintainer@example.test",
+                 *       "method": "merge"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MergePullRequestBody"];
+            };
+        };
+        responses: {
+            /** @description The pull request was merged, or the merge was already recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResult"];
+                };
+            };
+            /** @description The authorization is missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            /** @description The merge gate refused the merge. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "pr_merge_refused",
+                     *         "message": "required GitHub check verify concluded failed",
+                     *         "request_id": "req_0123456789abcdef",
+                     *         "details": {
+                     *           "stage": "merge",
+                     *           "reasons": [
+                     *             "required GitHub check verify concluded failed"
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    abandonPullRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "three attempts produced no test delta"
+                 *     }
+                 */
+                "application/json": components["schemas"]["AbandonRequest"];
+            };
+        };
+        responses: {
+            /** @description The pull request is recorded as abandoned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AbandonResult"];
+                };
+            };
+            /** @description A reason is required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
 }
