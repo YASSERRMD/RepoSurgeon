@@ -9,6 +9,7 @@ import MembersView from '@/views/MembersView.vue';
 import OrganizationsView from '@/views/OrganizationsView.vue';
 import PlanView from '@/views/PlanView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
+import RunPullRequestView from '@/views/RunPullRequestView.vue';
 import RunRecoveryView from '@/views/RunRecoveryView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
 import ToolsView from '@/views/ToolsView.vue';
@@ -108,6 +109,15 @@ export const routes: RouteRecordRaw[] = [
     name: 'plan-inspector',
     component: PlanView,
     meta: { title: 'Plan inspector', requiresAuth: true },
+  },
+  {
+    // Reading the pull request is open to any member; merging is gated by the
+    // merge.execute permission inside the view and by the API, which refuses a
+    // model or bot identity as an authorizer.
+    path: '/runs/:runId/pull-request',
+    name: 'run-pull-request',
+    component: RunPullRequestView,
+    meta: { title: 'Pull request', requiresAuth: true },
   },
   {
     // The recovery journal is readable by any member; planning an attempt or

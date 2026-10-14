@@ -23,6 +23,11 @@ import type {
   PlanDecision,
   PlanSubmission,
   PlanView,
+  AbandonBody,
+  MergePullRequestBody,
+  MergeResult,
+  OpenPullRequestBody,
+  PullRequestView,
   RecoverRequest,
   RecoverResponse,
   RecoveryView,
@@ -747,6 +752,57 @@ export class HealthClient {
     return this.call<RollbackResponse>({
       method: 'POST',
       path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/rollback`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /**
+   * openPullRequest composes the branch and opens one pull request. The
+   * effect id makes the call exactly-once, so a replay answers with the
+   * recorded pull request instead of opening a second one. A 400 carries the
+   * push gate's reasons and a 409 the merge gate's.
+   */
+  openPullRequest(runId: string, body: OpenPullRequestBody, key: string): Promise<PullRequestView> {
+    return this.call<PullRequestView>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/pr`,
+      body,
+      idempotencyKey: key,
+      acceptStatuses: [200, 201],
+    });
+  }
+
+  /** getPullRequest reads the tracked pull request of a run. */
+  getPullRequest(runId: string, options?: RequestOptions): Promise<PullRequestView> {
+    return this.call<PullRequestView>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/pr`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /**
+   * mergePullRequest merges the tracked pull request. The authorization must
+   * name a permitted human: the server refuses a model or bot identity, an
+   * empty one, and any merge whose required checks or approvals are missing.
+   */
+  mergePullRequest(runId: string, body: MergePullRequestBody, key: string): Promise<MergeResult> {
+    return this.call<MergeResult>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/merge`,
+      body,
+      idempotencyKey: key,
+    });
+  }
+
+  /** abandonPullRequest closes the pull request without merging. */
+  abandonPullRequest(runId: string, body: AbandonBody, key: string): Promise<PullRequestView> {
+    return this.call<PullRequestView>({
+      method: 'POST',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/abandon`,
       body,
       idempotencyKey: key,
     });
