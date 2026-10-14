@@ -151,6 +151,7 @@ export type MemberUpdateResponse = JsonOf<'/api/v1/members/{membership_id}', 200
 export type CredentialListResponse = JsonOf<'/api/v1/credentials', 200>;
 export type CredentialCreateResponse = JsonOf<'/api/v1/credentials', 201>;
 export type CredentialRotateResponse = JsonOf<'/api/v1/credentials/{credential_id}/rotate', 200>;
+export type ModelProviderStatus = components['schemas']['ModelProviderStatus'];
 export type ToolListResponse = JsonOf<'/api/v1/tools', 200>;
 export type ApprovalListResponse = JsonOf<'/api/v1/approvals', 200>;
 export type ApprovalCreateResponse = JsonOf<'/api/v1/approvals', 201>;
@@ -172,6 +173,9 @@ export type PullRequestReplayResponse = JsonOf<'/api/v1/runs/{run_id}/pr', 200>;
 export type PullRequestGetResponse = JsonOf<'/api/v1/runs/{run_id}/pr', 200>;
 export type MergeResultResponse = JsonOf<'/api/v1/runs/{run_id}/merge', 200>;
 export type AbandonResultResponse = JsonOf<'/api/v1/runs/{run_id}/abandon', 200>;
+export type DashboardResponse = JsonOf<'/api/v1/dashboard', 200>;
+export type PreferencesGetResponse = JsonOf<'/api/v1/me/preferences', 200>;
+export type PreferencesSaveResponse = JsonOf<'/api/v1/me/preferences', 200>;
 export type PlanResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 200>;
 export type PlanSaveResponse = JsonOf<'/api/v1/runs/{run_id}/plan', 201>;
 export type PlanDecisionResponse = JsonOf<'/api/v1/runs/{run_id}/plan/approve', 200>;
@@ -241,3 +245,25 @@ export type AbandonBody = components['schemas']['AbandonRequest'];
 export type MergeResult = components['schemas']['MergeResult'];
 /** GateDecision is the push or merge gate verdict with its reasons. */
 export type GateDecision = components['schemas']['GateDecision'];
+
+/** ContractDashboardView is the console aggregate of the active organization. */
+export type ContractDashboardView = components['schemas']['DashboardView'];
+export type DashboardView = ContractDashboardView;
+/** DashboardRun is one recent run row on the console. */
+export type DashboardRun = NonNullable<ContractDashboardView['recent_runs']>[number];
+
+/** ContractPreferencesView is the stored view settings of the caller. */
+export type ContractPreferencesView = components['schemas']['PreferencesView'];
+export type PreferencesView = ContractPreferencesView;
+/** PreferencesSaveRequest stores the view settings. */
+export type PreferencesSaveRequest = components['schemas']['PreferencesSaveRequest'];
+
+/** IssueListResponse is the cursor page of issues for one project. */
+export type IssueListResponse = JsonOf<'/api/v1/issues', 200>;
+/** Issue is one imported GitHub issue. */
+export type Issue = IssueListResponse['items'][number];
+/** RunPage is the cursor page of runs for one project. */
+export type RunListResponse = JsonOf<'/api/v1/runs', 200>;
+/** RunSummary is one run as the list endpoint reports it. */
+export type RunSummary = RunListResponse['items'][number];
+/** AuditPage is the cursor page of audit events. */
