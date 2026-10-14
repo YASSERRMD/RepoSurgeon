@@ -100,9 +100,8 @@ describe('RunsListView', () => {
     await flushPromises();
     await flushPromises();
 
-    expect(
-      JSON.parse(JSON.stringify(fetchMock.mock.calls.at(-1)?.[0])).includes('cursor=cursor-2'),
-    ).toBe(true);
+    const lastCall = fetchMock.mock.calls.at(-1)?.[0];
+    expect(String(lastCall)).toContain('cursor=cursor-2');
     expect(wrapper.find('[data-testid="run-run_3"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="runs-page-state"]').text()).toContain('no further pages');
   });

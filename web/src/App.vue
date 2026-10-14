@@ -217,6 +217,14 @@ const statusLabels: Record<string, string> = {
   background: var(--color-canvas);
 }
 
+/* Keyboard focus stays visible everywhere: the ring uses the gold accent on
+   navy so it is distinguishable against both light and dark surfaces. */
+.nav-link:focus-visible,
+.signout:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
 .nav-link.router-link-active {
   background: var(--color-navy);
   color: #fff;
@@ -298,6 +306,25 @@ const statusLabels: Record<string, string> = {
     display: none;
   }
 
+  /* The two navigation groups wrap into their own rows on a phone, so the
+     workbench links stay reachable without horizontal scrolling. */
+  .header-meta {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .app-nav,
+  .app-nav-admin {
+    flex-wrap: wrap;
+    border-radius: var(--radius-sm);
+  }
+
+  .badge-active-org,
+  .badge-user {
+    max-width: 100%;
+  }
+
   .header-meta {
     width: 100%;
     justify-content: space-between;
@@ -311,6 +338,21 @@ const statusLabels: Record<string, string> = {
   .app-footer {
     flex-wrap: wrap;
     gap: 0.35rem;
+  }
+}
+</style>
+
+<style scoped>
+/* Tablet and wide-desktop layouts keep the header on one row. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header-meta {
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 }
 </style>

@@ -1096,6 +1096,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the real aggregate metrics of the active organization
+         * @description Every count is computed from the run, issue and audit tables by the
+         *     server, so the console never renders a number the API did not derive.
+         *     A store failure answers 500 rather than an empty dashboard.
+         */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the stored view settings of the caller */
+        get: operations["getPreferences"];
+        /**
+         * Store the view settings of the caller
+         * @description The settings document is persisted so a reload restores the layout, filters and table density the operator chose.
+         */
+        put: operations["savePreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1400,6 +1443,11 @@ export interface components {
                 merge_requires_approval?: boolean;
             };
         };
+        /**
+         * @description Every state the durable run state machine can record.
+         * @enum {string}
+         */
+        RunState: "queued" | "intaking" | "analyzing" | "planning" | "awaiting_approval" | "editing" | "testing" | "reviewing" | "pr_ready" | "pr_open" | "completed" | "failed" | "canceled" | "blocked";
         Run: {
             id: string;
             organization_id: string;
@@ -1900,6 +1948,42 @@ export interface components {
             run_id?: string;
             pull_request?: components["schemas"]["PullRequestView"];
             abandoned?: boolean;
+        };
+        DashboardView: {
+            organization_id?: string;
+            runs_by_state?: {
+                [key: string]: number;
+            };
+            open_issues?: number;
+            blocked_runs?: number;
+            failed_runs?: number;
+            recent_audit_events?: number;
+            recent_runs?: components["schemas"]["DashboardRun"][];
+            /** Format: date-time */
+            generated_at?: string;
+        };
+        DashboardRun: {
+            id?: string;
+            project_id?: string;
+            project_name?: string;
+            state?: string;
+            attempt?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        PreferencesView: {
+            user_id?: string;
+            view?: {
+                [key: string]: unknown;
+            };
+            stored?: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        PreferencesSaveRequest: {
+            view: {
+                [key: string]: unknown;
+            };
         };
         Error: {
             error: {
@@ -3482,6 +3566,8 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Page size (1-100, default 20). */
                 limit?: components["parameters"]["Limit"];
+                /** @description Optional run state the server filters by before pagination, so a filtered page is the filtered set. */
+                state?: components["schemas"]["RunState"];
             };
             header?: never;
             path?: never;
@@ -4988,6 +5074,163 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The aggregate metrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "org_1a2b3c4d5e6f7g8h9i0j",
+                     *       "runs_by_state": {
+                     *         "completed": 3,
+                     *         "blocked": 1,
+                     *         "failed": 2
+                     *       },
+                     *       "open_issues": 12,
+                     *       "blocked_runs": 1,
+                     *       "failed_runs": 2,
+                     *       "recent_audit_events": 48,
+                     *       "recent_runs": [
+                     *         {
+                     *           "id": "run_1a2b3c4d5e6f7g8h9i0j",
+                     *           "project_id": "prj_1a2b3c4d5e6f7g8h9i0j",
+                     *           "project_name": "RepoSurgeon",
+                     *           "state": "blocked",
+                     *           "attempt": 2,
+                     *           "created_at": "2026-10-10T10:00:00Z"
+                     *         }
+                     *       ],
+                     *       "generated_at": "2026-10-10T10:05:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DashboardView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            /** @description The aggregate could not be read. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The console service is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored settings, or the empty document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The console service is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    savePreferences: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Required for create/update operations. Repeating a request with the
+                 *     same key returns the original result instead of duplicating effects.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description CSRF token returned by login or refresh; required for cookie-authenticated mutations. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "view": {
+                 *         "table_density": "comfortable",
+                 *         "active_section": "runs",
+                 *         "filters": {
+                 *           "state": "blocked"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreferencesSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesView"];
+                };
+            };
+            /** @description The document is malformed or too large. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The console service is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }
