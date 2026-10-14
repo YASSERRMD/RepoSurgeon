@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RepoSurgeon API
-  version: 0.13.0
+  version: 0.14.0
   summary: RepoSurgeon autonomous software engineering workspace
   description: |
     RepoSurgeon connects authorized GitHub repositories to an autonomous
@@ -66,6 +66,8 @@ tags:
     description: Test discovery, execution and evidence
   - name: recovery
     description: Bounded retries, loop detection and rollback
+  - name: pull_requests
+    description: Git commits, pull requests, CI review and safe merge
 
 paths:
   /health/live:
@@ -2263,7 +2265,7 @@ paths:
               example:
                 error:
                   code: recovery_loop_detected
-                  message: diff diff_a1b2c3d4e5f6 was already applied; applying it again on attempt 2 would repeat the same change
+                  message: "diff diff_a1b2c3d4e5f6 was already applied; applying it again on attempt 2 would repeat the same change"
                   request_id: req_0123456789abcdef
                   details:
                     loop:
@@ -2370,6 +2372,225 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /api/v1/runs/{run_id}/pr:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: openPullRequest
+      summary: Compose the branch and open one pull request
+      description: |
+        Runs the push gate first: every required check must have run green, the
+        secret scan must be clean, every changed path must be allowlisted and
+        the pinned base must not have moved unless the change was rebased and
+        retested. A refusal answers 400 with every rule that blocked the push.
+        The effect_id makes the create exactly-once: a replayed request answers
+        with the recorded pull request instead of opening a second one.
+      tags: [pull_requests]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenPullRequestRequest'
+            example:
+              workspace_id: wsp_1a2b3c4d5e6f7g8h9i0j
+              effect_id: effect_open_1
+              head: agent/run-pr
+              base: main
+              title: "m13: bound the pagination limit"
+              issue_number: 42
+              repo_owner: acme
+              repo_name: app
+              summary: Bound the limit before the offset.
+              risks: [The runner is not exercised in CI.]
+              secret_scan_clean: true
+              pinned_sha: 9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012
+              base_sha: 9a1aecc0f2b3d4e5f60718293a4b5c6d7e8f9012
+              files: [internal/api/list.go]
+              checks:
+                - profile: go.test
+                  verdict: green
+                  ran: true
+                - profile: go.build
+                  verdict: green
+                  ran: true
+              commits:
+                - message: "m13: bound the limit"
+                  paths: [internal/api/list.go]
+      responses:
+        '201':
+          description: The pull request was opened.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequestView'
+        '200':
+          description: A pull request already exists for this effect id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequestView'
+        '400':
+          description: The push gate refused the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: pr_push_refused
+                  message: "required check go.build did not run"
+                  request_id: req_0123456789abcdef
+                  details:
+                    stage: push
+                    reasons: [required check go.build did not run]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The pull request service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: getPullRequest
+      summary: Read the tracked pull request of a run
+      description: Returns the recorded pull request refreshed from GitHub, including its real check runs and reviews.
+      tags: [pull_requests]
+      responses:
+        '200':
+          description: The tracked pull request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequestView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The pull request service is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/runs/{run_id}/merge:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: mergePullRequest
+      summary: Merge the pull request under an explicit human authorization
+      description: |
+        The gate is evaluated against real GitHub state immediately before the
+        merge: required checks must have concluded success, the required
+        approvals must be recorded and a permitted human must authorize it. A
+        model identity, a bot identity and an empty authorization are refused.
+      tags: [pull_requests]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergePullRequestBody'
+            example:
+              authorized_by: maintainer@example.test
+              method: merge
+      responses:
+        '200':
+          description: The pull request was merged, or the merge was already recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeResult'
+        '400':
+          description: The authorization is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The merge gate refused the merge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: pr_merge_refused
+                  message: "required GitHub check verify concluded failed"
+                  request_id: req_0123456789abcdef
+                  details:
+                    stage: merge
+                    reasons: [required GitHub check verify concluded failed]
+
+  /api/v1/runs/{run_id}/abandon:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: abandonPullRequest
+      summary: Close the pull request without merging
+      description: Records why the change is abandoned and keeps the branch and its evidence. A merged pull request is never abandoned.
+      tags: [pull_requests]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbandonRequest'
+            example:
+              reason: three attempts produced no test delta
+      responses:
+        '200':
+          description: The pull request is recorded as abandoned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbandonResult'
+        '400':
+          description: A reason is required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 
 components:
@@ -3801,6 +4022,268 @@ components:
         receipt:
           $ref: '#/components/schemas/EffectReceipt'
         duplicate:
+          type: boolean
+
+    OpenPullRequestRequest:
+      type: object
+      required: [workspace_id, effect_id, head, title, repo_owner, repo_name, files, checks, commits]
+      properties:
+        workspace_id:
+          type: string
+        effect_id:
+          type: string
+          description: Unique effect identifier; the same id can never open two pull requests.
+        head:
+          type: string
+        base:
+          type: string
+          description: Branch the change targets; defaults to main.
+        title:
+          type: string
+        issue_number:
+          type: integer
+        repo_owner:
+          type: string
+        repo_name:
+          type: string
+        summary:
+          type: string
+        risks:
+          type: array
+          items:
+            type: string
+        secret_scan_clean:
+          type: boolean
+        pinned_sha:
+          type: string
+        base_sha:
+          type: string
+        files:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalCheck'
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitSpec'
+
+    LocalCheck:
+      type: object
+      required: [profile, verdict, ran]
+      properties:
+        profile:
+          type: string
+        verdict:
+          type: string
+          enum: [green, red]
+        ran:
+          type: boolean
+        detail:
+          type: string
+
+    CommitSpec:
+      type: object
+      required: [message, paths]
+      properties:
+        message:
+          type: string
+        paths:
+          type: array
+          items:
+            type: string
+
+    PullRequestView:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        repo_owner:
+          type: string
+        repo_name:
+          type: string
+        head_branch:
+          type: string
+        base_branch:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        issue_number:
+          type: integer
+        state:
+          type: string
+          enum: [open, merged, closed, blocked, abandoned]
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemoteCheck'
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemoteReview'
+        approval_count:
+          type: integer
+        merge_state:
+          type: string
+        blocked_reason:
+          type: string
+        merge_sha:
+          type: string
+        branch_deleted:
+          type: boolean
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposedCommit'
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    RemoteCheck:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [queued, in_progress, completed]
+        conclusion:
+          type: string
+          enum: [success, failure, cancelled, skipped, neutral]
+        details_url:
+          type: string
+
+    RemoteReview:
+      type: object
+      properties:
+        author:
+          type: string
+        state:
+          type: string
+          enum: [approved, changes_requested, commented]
+        commit_id:
+          type: string
+
+    ComposedCommit:
+      type: object
+      properties:
+        sha:
+          type: string
+        message:
+          type: string
+        author:
+          $ref: '#/components/schemas/CommitIdentity'
+        committer:
+          $ref: '#/components/schemas/CommitIdentity'
+        files:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+
+    CommitIdentity:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+
+    MergePullRequestBody:
+      type: object
+      required: [authorized_by]
+      properties:
+        authorized_by:
+          type: string
+          description: Permitted human authorizing the merge; a model or bot identity is refused.
+        method:
+          type: string
+          description: GitHub merge method, for example merge or squash.
+          default: merge
+        effect_id:
+          type: string
+
+    MergeResult:
+      type: object
+      properties:
+        run_id:
+          type: string
+        pull_request:
+          $ref: '#/components/schemas/PullRequestView'
+        merge_action:
+          $ref: '#/components/schemas/MergeAction'
+        merge_sha:
+          type: string
+        already_merged:
+          type: boolean
+        decision:
+          $ref: '#/components/schemas/GateDecision'
+
+    MergeAction:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        pull_request_id:
+          type: string
+        authorized_by:
+          type: string
+        method:
+          type: string
+        merge_sha:
+          type: string
+        succeeded:
+          type: boolean
+        outcome:
+          type: string
+        effect_id:
+          type: string
+        created_at:
+          type: string
+
+    GateDecision:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+        stage:
+          type: string
+          enum: [push, merge]
+
+    AbandonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    AbandonResult:
+      type: object
+      properties:
+        run_id:
+          type: string
+        pull_request:
+          $ref: '#/components/schemas/PullRequestView'
+        abandoned:
           type: boolean
 
     Error:
