@@ -12,7 +12,10 @@ import (
 // every mutation, enforces its own state machine and answers exactly what the
 // real API would for the same sequence of calls.
 type fakeGitHub struct {
-	mu          sync.Mutex
+	mu sync.Mutex
+	// movedHead reports that another actor pushed to the branch, which the
+	// fake reflects in the head SHA it returns.
+	movedHead   bool
 	created     []PullRequest
 	nextNumber  int64
 	merged      map[int64]string
@@ -71,7 +74,11 @@ func (f *fakeGitHub) CreatePullRequest(_ context.Context, req CreatePullRequest)
 func (f *fakeGitHub) GetPullRequest(_ context.Context, _, _ string, number int64) (PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	base := PullRequest{Number: number, State: PROpen, HeadSHA: "head-sha", MergeState: "clean"}
+	head := "head-sha"
+	if f.movedHead {
+		head = "head-sha-moved"
+	}
+	base := PullRequest{Number: number, State: PROpen, HeadSHA: head, MergeState: "clean"}
 	if sha, ok := f.merged[number]; ok {
 		base.State = PRMerged
 		base.MergeSHA = sha
@@ -159,6 +166,10 @@ func (m *memoryPRStore) ListPullRequests(_ context.Context, _, runID string, _ i
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]PullRequest(nil), m.byRun[runID]...), nil
+}
+
+func (m *memoryPRStore) SaveCommit(_ context.Context, _, _, _ string, _ Commit) error {
+	return nil
 }
 
 func (m *memoryPRStore) RecordMerge(_ context.Context, action MergeAction) error {

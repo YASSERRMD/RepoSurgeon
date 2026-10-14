@@ -247,13 +247,18 @@ type PRService struct {
 	// mergeMu serializes the check-then-merge sequence so two workers acting on
 	// a retried request cannot both merge the same pull request.
 	mergeMu sync.Mutex
+	// openMu serializes the check-then-create sequence so two deliveries of the
+	// same webhook cannot both open a pull request.
+	openMu sync.Mutex
 }
 
-// PullRequestStore persists pull requests and merge actions.
+// PullRequestStore persists pull requests, their composed commits and merge
+// actions.
 type PullRequestStore interface {
 	SavePullRequest(ctx context.Context, pr PullRequest) error
 	GetPullRequest(ctx context.Context, runID string) (PullRequest, bool, error)
 	ListPullRequests(ctx context.Context, organizationID, runID string, limit int) ([]PullRequest, error)
+	SaveCommit(ctx context.Context, prID, runID, organizationID string, commit Commit) error
 	RecordMerge(ctx context.Context, action MergeAction) error
 	MergeActions(ctx context.Context, runID string, limit int) ([]MergeAction, error)
 }
@@ -267,6 +272,8 @@ func NewPRService(client GitHubClient, repos PullRequestStore, gate *Gate) *PRSe
 // the call exactly-once: a repeated webhook, a network retry or a concurrent
 // request returns the same pull request instead of creating a second one.
 func (s *PRService) Open(ctx context.Context, request CreatePullRequest, body PullRequestBody) (PullRequest, error) {
+	s.openMu.Lock()
+	defer s.openMu.Unlock()
 	if strings.TrimSpace(request.EffectID) == "" {
 		return PullRequest{}, errors.New("gitops: an effect id is required to open a pull request")
 	}
