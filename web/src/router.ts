@@ -1,7 +1,11 @@
 import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from 'vue-router';
 
 import ApprovalsView from '@/views/ApprovalsView.vue';
+import AuditView from '@/views/AuditView.vue';
 import ContextInspectorView from '@/views/ContextInspectorView.vue';
+import DashboardView from '@/views/DashboardView.vue';
+import IssuesView from '@/views/IssuesView.vue';
+import ModelsView from '@/views/ModelsView.vue';
 import CredentialsView from '@/views/CredentialsView.vue';
 import HomeView from '@/views/HomeView.vue';
 import LoginView from '@/views/LoginView.vue';
@@ -9,6 +13,8 @@ import MembersView from '@/views/MembersView.vue';
 import OrganizationsView from '@/views/OrganizationsView.vue';
 import PlanView from '@/views/PlanView.vue';
 import ProjectDetailView from '@/views/ProjectDetailView.vue';
+import RunsListView from '@/views/RunsListView.vue';
+import SettingsView from '@/views/SettingsView.vue';
 import RunPullRequestView from '@/views/RunPullRequestView.vue';
 import RunRecoveryView from '@/views/RunRecoveryView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
@@ -24,7 +30,15 @@ import { useAuthStore } from '@/stores/auth';
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    name: 'home',
+    name: 'overview',
+    component: DashboardView,
+    meta: { title: 'Overview', requiresAuth: true },
+  },
+  {
+    // The readiness page stays public: an operator must be able to see why a
+    // deployment is degraded before signing in.
+    path: '/status',
+    name: 'status',
     component: HomeView,
     meta: { title: 'Operational status', requiresAuth: false },
   },
@@ -93,8 +107,32 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/runs',
     name: 'runs',
-    component: ContextInspectorView,
-    meta: { title: 'Context inspector', requiresAuth: true },
+    component: RunsListView,
+    meta: { title: 'Runs', requiresAuth: true },
+  },
+  {
+    path: '/issues',
+    name: 'issues',
+    component: IssuesView,
+    meta: { title: 'Issues', requiresAuth: true },
+  },
+  {
+    path: '/models',
+    name: 'models',
+    component: ModelsView,
+    meta: { title: 'Models', requiresAuth: true },
+  },
+  {
+    path: '/audit',
+    name: 'audit',
+    component: AuditView,
+    meta: { title: 'Audit', requiresAuth: true },
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: SettingsView,
+    meta: { title: 'Settings', requiresAuth: true },
   },
   {
     path: '/runs/:runId/context',
@@ -141,7 +179,7 @@ export async function authGuard(to: RouteLocationNormalized): Promise<RouteLocat
   if (auth.status === 'unknown') await auth.bootstrap();
 
   if (to.name === 'login') {
-    return auth.isAuthenticated ? { name: 'home' } : true;
+    return auth.isAuthenticated ? { name: 'overview' } : true;
   }
   if (to.meta.requiresAuth !== true) return true;
   if (!auth.isAuthenticated) {

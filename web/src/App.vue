@@ -5,26 +5,47 @@ import { RouterLink, useRouter } from 'vue-router';
 import { useHealthStore } from '@/stores/health';
 import { useOrganizationsStore } from '@/stores/organizations';
 import { useAuthStore } from '@/stores/auth';
+import { useRoute } from 'vue-router';
 
 const health = useHealthStore();
 const organizations = useOrganizationsStore();
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
-const navLinks = [
-  { to: '/', label: 'Status' },
-  { to: '/organizations', label: 'Organizations' },
-  { to: '/projects', label: 'Projects' },
-  { to: '/workspaces', label: 'Search' },
-  { to: '/runs', label: 'Context' },
-  { to: '/runs', label: 'Plan' },
-  { to: '/members', label: 'Members' },
-  { to: '/credentials', label: 'Credentials' },
-  { to: '/approvals', label: 'Approvals' },
-  { to: '/tools', label: 'Tools' },
+/**
+ * primaryNav is the workbench navigation of record. Every entry points at a
+ * real route backed by a real endpoint, and the permission gate is what the API
+ * enforces too: a link is hidden when the caller may not use the section, and
+ * the API independently refuses the same request.
+ */
+const primaryNav = [
+  { to: '/', label: 'Overview', permission: 'project.read' },
+  { to: '/projects', label: 'Projects', permission: 'project.read' },
+  { to: '/issues', label: 'Issues', permission: 'project.read' },
+  { to: '/runs', label: 'Runs', permission: 'project.read' },
+  { to: '/workspaces', label: 'Workspaces', permission: 'project.read' },
+  { to: '/models', label: 'Models', permission: 'project.read' },
+  { to: '/approvals', label: 'Approvals', permission: 'approval.decide' },
+  { to: '/audit', label: 'Audit', permission: 'project.read' },
+  { to: '/settings', label: 'Settings', permission: 'project.read' },
+];
+
+const adminNav = [
+  { to: '/organizations', label: 'Organizations', permission: 'member.admin' },
+  { to: '/members', label: 'Members', permission: 'member.admin' },
+  { to: '/credentials', label: 'Credentials', permission: 'credential.admin' },
+  { to: '/tools', label: 'Tools', permission: 'project.read' },
 ];
 
 const userEmail = computed(() => auth.user?.email ?? '');
+
+/** can is the permission gate the backend enforces too. */
+const can = (permission: string): boolean => auth.can(permission as never);
+
+const visibleNav = computed(() => primaryNav.filter((link) => can(link.permission)));
+const visibleAdminNav = computed(() => adminNav.filter((link) => can(link.permission)));
+const activeSection = computed(() => String(route.path));
 
 // The header shows the active organization; resolve its name once on boot.
 onMounted(() => {
@@ -58,7 +79,28 @@ const statusLabels: Record<string, string> = {
       </div>
       <div class="header-meta">
         <nav class="app-nav" aria-label="Primary">
-          <RouterLink v-for="link in navLinks" :key="link.to" :to="link.to" class="nav-link">
+          <RouterLink
+            v-for="link in visibleNav"
+            :key="link.to"
+            :to="link.to"
+            class="nav-link"
+            :aria-current="activeSection === link.to ? 'page' : undefined"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </nav>
+        <nav
+          v-if="visibleAdminNav.length > 0"
+          class="app-nav app-nav-admin"
+          aria-label="Administration"
+        >
+          <RouterLink
+            v-for="link in visibleAdminNav"
+            :key="link.to"
+            :to="link.to"
+            class="nav-link"
+            :aria-current="activeSection === link.to ? 'page' : undefined"
+          >
             {{ link.label }}
           </RouterLink>
         </nav>

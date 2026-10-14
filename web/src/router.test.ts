@@ -153,7 +153,9 @@ describe('authGuard', () => {
 
     await router.push('/login');
 
-    expect(router.currentRoute.value.name).toBe('home');
+    // A signed-in visitor is redirected to the workbench overview, not to the
+    // public status page.
+    expect(router.currentRoute.value.name).toBe('overview');
   });
 
   it('probes the session exactly once across navigations', async () => {

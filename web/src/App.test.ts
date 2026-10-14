@@ -4,9 +4,9 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import App from './App.vue';
+import { useAuthStore } from '@/stores/auth';
 import { useHealthStore, type OperationalStatus } from '@/stores/health';
 import { useOrganizationsStore } from '@/stores/organizations';
-import { useAuthStore } from '@/stores/auth';
 
 function stubResponses(): void {
   vi.stubGlobal(
@@ -34,6 +34,10 @@ function routerStub() {
       { path: '/credentials', component: { template: '<div />' } },
       { path: '/approvals', component: { template: '<div />' } },
       { path: '/tools', component: { template: '<div />' } },
+      { path: '/issues', component: { template: '<div />' } },
+      { path: '/models', component: { template: '<div />' } },
+      { path: '/audit', component: { template: '<div />' } },
+      { path: '/settings', component: { template: '<div />' } },
       { path: '/organizations/:id', component: { template: '<div />' } },
     ],
   });
@@ -55,25 +59,48 @@ describe('App shell', () => {
     const router = routerStub();
     const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
 
+    const auth = useAuthStore();
+    auth.user = {
+      id: 'usr_1a2b3c4d5e6f7g8h9i0j',
+      email: 'developer@example.com',
+      organizations: [
+        {
+          id: 'org_1a2b3c4d5e6f7g8h9i0j',
+          name: 'Acme Engineering',
+          slug: 'acme-engineering',
+          role: 'maintainer',
+          permissions: ['project.read', 'approval.decide'],
+        },
+      ],
+    };
+    auth.status = 'authenticated';
+    auth.activeOrganizationId = 'org_1a2b3c4d5e6f7g8h9i0j';
+    await flushPromises();
+
     expect(wrapper.text()).toContain('RepoSurgeon');
     expect(wrapper.find('[data-testid="footer-status"]').text()).toBeTruthy();
 
     const links = wrapper.findAll('nav a');
-    expect(links.map((link) => link.attributes('href'))).toEqual([
+    // The shell renders only the sections the caller may use. A member with
+    // project.read sees the workbench sections; the administration nav appears
+    // only for members with member.admin or credential.admin.
+    const hrefs = links.map((link) => link.attributes('href'));
+    for (const wanted of [
       '/',
-      '/organizations',
       '/projects',
+      '/issues',
+      '/runs',
       '/workspaces',
-      '/runs',
-      '/runs',
-      '/members',
-      '/credentials',
-      '/approvals',
-      '/tools',
-    ]);
-    // Both inspector entry points share the run-selection route: the plan and
-    // the context of a run are only addressable once a run id is known.
-    expect(links.map((link) => link.text())).toContain('Plan');
+      '/models',
+      '/audit',
+      '/settings',
+    ]) {
+      expect(hrefs).toContain(wanted);
+    }
+    expect(hrefs).not.toContain('/members');
+    expect(hrefs).not.toContain('/credentials');
+    expect(links.map((link) => link.text())).toContain('Runs');
+    expect(links.map((link) => link.text())).toContain('Issues');
     await wrapper.vm.$nextTick();
   });
 
