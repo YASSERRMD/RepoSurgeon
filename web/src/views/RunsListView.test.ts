@@ -100,7 +100,7 @@ describe('RunsListView', () => {
     await flushPromises();
     await flushPromises();
 
-    const lastCall = fetchMock.mock.calls.at(-1)?.[0];
+    const lastCall: unknown = fetchMock.mock.calls.at(-1)?.[0];
     expect(String(lastCall)).toContain('cursor=cursor-2');
     expect(wrapper.find('[data-testid="run-run_3"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="runs-page-state"]').text()).toContain('no further pages');
