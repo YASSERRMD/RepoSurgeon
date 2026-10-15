@@ -13,6 +13,7 @@ import type {
   CredentialRotate,
   LiveStatus,
   LoginRequest,
+  ModelProviderStatus,
   Member,
   MemberInvite,
   MemberPage,
@@ -24,7 +25,11 @@ import type {
   PlanSubmission,
   PlanView,
   AbandonBody,
+  DashboardView,
+  IssueListResponse,
   MergePullRequestBody,
+  PreferencesSaveRequest,
+  PreferencesView,
   MergeResult,
   OpenPullRequestBody,
   PullRequestView,
@@ -40,6 +45,7 @@ import type {
   ReadinessReport,
   RunContextRefreshResponse,
   RunContextResponse,
+  RunListResponse,
   SessionResponse,
   SystemInfo,
   ToolListResponse,
@@ -138,10 +144,10 @@ export interface RequestOptions {
   acceptStatuses?: number[];
 }
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 /** Mutations carry CSRF protection; read-only calls never need the token. */
-const MUTATING_METHODS: readonly HttpMethod[] = ['POST', 'PATCH', 'DELETE'];
+const MUTATING_METHODS: readonly HttpMethod[] = ['POST', 'PATCH', 'PUT', 'DELETE'];
 
 interface RawRequest {
   method: HttpMethod;
@@ -770,6 +776,84 @@ export class HealthClient {
       body,
       idempotencyKey: key,
       acceptStatuses: [200, 201],
+    });
+  }
+
+  /**
+   * listIssues reads the issues of one project with cursor pagination. The
+   * cursor comes from the previous page's `next_cursor`.
+   */
+  listIssues(
+    projectId: string,
+    options?: { cursor?: string; limit?: number; signal?: AbortSignal },
+  ): Promise<IssueListResponse> {
+    return this.call<IssueListResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/issues${query({ project_id: projectId, cursor: options?.cursor, limit: options?.limit })}`,
+      signal: options?.signal,
+    });
+  }
+
+  /**
+   * listRuns reads the runs of one project with cursor pagination. The state
+   * filter is applied by the server, so a filtered page is the filtered set.
+   */
+  listRuns(
+    projectId: string,
+    options?: { cursor?: string; limit?: number; state?: string; signal?: AbortSignal },
+  ): Promise<RunListResponse> {
+    return this.call<RunListResponse>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs${query({
+        project_id: projectId,
+        cursor: options?.cursor,
+        limit: options?.limit,
+        state: options?.state,
+      })}`,
+      signal: options?.signal,
+    });
+  }
+
+  /** getModelProvider reads the configured model provider status. */
+  getModelProvider(options?: RequestOptions): Promise<ModelProviderStatus> {
+    return this.call<ModelProviderStatus>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/model/provider`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getDashboard reads the real aggregate metrics of the organization. */
+  getDashboard(options?: RequestOptions): Promise<DashboardView> {
+    return this.call<DashboardView>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/dashboard`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getPreferences reads the stored view settings of the caller. */
+  getPreferences(options?: RequestOptions): Promise<PreferencesView> {
+    return this.call<PreferencesView>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/me/preferences`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** savePreferences stores the view settings of the caller. */
+  savePreferences(body: PreferencesSaveRequest, key: string): Promise<PreferencesView> {
+    return this.call<PreferencesView>({
+      method: 'PUT',
+      path: `${this.baseUrl}/api/v1/me/preferences`,
+      body,
+      idempotencyKey: key,
     });
   }
 

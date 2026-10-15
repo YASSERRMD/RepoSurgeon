@@ -60,7 +60,7 @@ func (f *fakeRunsStore) Transition(_ context.Context, organizationID, runID, toS
 	return *run, nil
 }
 
-func (f *fakeRunsStore) ListForProject(_ context.Context, projectID string, _ int, _ string) (store.Page[store.Run], error) {
+func (f *fakeRunsStore) ListForProject(_ context.Context, projectID string, _ int, _ string, _ ...string) (store.Page[store.Run], error) {
 	var items []store.Run
 	for _, run := range f.runs {
 		if run.ProjectID == projectID {

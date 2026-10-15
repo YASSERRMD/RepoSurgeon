@@ -164,6 +164,12 @@ func run() error {
 		return filepath.Join(cfg.WorkspaceRoot, workspaceID)
 	})
 
+	// M14: console aggregate metrics and durable view settings.
+	consoleStores := &api.DashboardBundle{
+		Metrics:     store.NewDashboard(pool),
+		Preferences: store.NewPreferences(pool),
+	}
+
 	// M13: pull-request lifecycle over the trusted GitHub transport. The
 	// installation token is held by the adapter here and never reaches a runner.
 	prService := api.NewStorePullRequestService(nil, pool, func(workspaceID string) string {
@@ -199,6 +205,7 @@ func run() error {
 		Checks:     checkService,
 		Recovery:   recoveryService,
 		PRs:        prService,
+		Console:    consoleStores,
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

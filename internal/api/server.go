@@ -60,7 +60,9 @@ type Options struct {
 	// Recovery exposes the M12 repair loop, journal and rollback.
 	Recovery *RecoveryService
 	// PRs exposes the M13 pull-request lifecycle.
-	PRs       *PRService
+	PRs *PRService
+	// Console exposes the M14 dashboard aggregate and view settings.
+	Console   ConsoleStores
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -88,6 +90,7 @@ type Server struct {
 	checks     *CheckService
 	recovery   *RecoveryService
 	prs        *PRService
+	console    ConsoleStores
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -147,6 +150,7 @@ func NewServer(opts Options) (*Server, error) {
 		checks:     opts.Checks,
 		recovery:   opts.Recovery,
 		prs:        opts.PRs,
+		console:    opts.Console,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -306,6 +310,9 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/recovery", s.handleGetRecovery)
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/rollback", s.handleRollback)
 	}
+	router.Handle(http.MethodGet, "/api/v1/dashboard", s.handleGetDashboard)
+	router.Handle(http.MethodGet, "/api/v1/me/preferences", s.handleGetPreferences)
+	router.Handle(http.MethodPut, "/api/v1/me/preferences", s.handleSavePreferences)
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/pr", s.handleOpenPullRequest)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/pr", s.handleGetPullRequest)

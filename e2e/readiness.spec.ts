@@ -16,7 +16,7 @@ test.describe('operational readiness', () => {
       description: `/health/ready returned ${readiness.status()}`,
     });
 
-    await page.goto('/');
+    await page.goto('/status');
 
     await expect(page.getByRole('heading', { name: 'RepoSurgeon', level: 1 })).toBeVisible();
 
@@ -38,7 +38,7 @@ test.describe('operational readiness', () => {
   });
 
   test('system info card reports real build facts', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/status');
     const systemCard = page.getByTestId('system-card');
     await expect(systemCard).toBeVisible();
     await expect(systemCard).toContainText('reposurgeon');
@@ -50,7 +50,7 @@ test.describe('operational readiness', () => {
     expect([200, 503]).toContain(api.status());
     const report = (await api.json()) as { status: string; checks: unknown[] };
 
-    await page.goto('/');
+    await page.goto('/status');
     const card = page.getByTestId('readiness-card');
     if (report.status === 'ready') {
       await expect(card).toContainText('up');

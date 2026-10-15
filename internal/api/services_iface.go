@@ -13,7 +13,7 @@ type RunScheduler interface {
 	Create(ctx context.Context, run store.Run) (store.Run, error)
 	Get(ctx context.Context, organizationID, runID string) (store.Run, error)
 	Transition(ctx context.Context, organizationID, runID, toState, reason, actorType string) (store.Run, error)
-	ListForProject(ctx context.Context, projectID string, limit int, cursor string) (store.Page[store.Run], error)
+	ListForProject(ctx context.Context, projectID string, limit int, cursor string, states ...string) (store.Page[store.Run], error)
 	History(ctx context.Context, runID string) ([]store.StateChange, error)
 }
 

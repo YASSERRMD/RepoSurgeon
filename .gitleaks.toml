@@ -13,4 +13,8 @@ paths = [
     '''internal/redact/redact_test\.go$''',
     '''\.github/workflows/compose-smoke\.yml$''',
     '''web/src/api/client\.test\.ts$''',
+    # The API test harnesses build the fixed header pairs every mutation
+    # needs; the literal is a header name next to a placeholder key, not a
+    # credential.
+    '''internal/api/(m02_fakes|m11_handlers|m12_handlers|m13_handlers|m14_handlers)_test\.go$''',
 ]
