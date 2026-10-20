@@ -64,7 +64,9 @@ type Options struct {
 	// Console exposes the M14 dashboard aggregate and view settings.
 	Console ConsoleStores
 	// Events exposes the M15 run-event log and SSE stream.
-	Events    EventsStore
+	Events EventsStore
+	// Cost exposes the M15 measured usage and cost aggregate.
+	Cost      CostStore
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -94,6 +96,7 @@ type Server struct {
 	prs        *PRService
 	console    ConsoleStores
 	events     EventsStore
+	cost       CostStore
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -155,6 +158,7 @@ func NewServer(opts Options) (*Server, error) {
 		prs:        opts.PRs,
 		console:    opts.Console,
 		events:     opts.Events,
+		cost:       opts.Cost,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -320,6 +324,9 @@ func (s *Server) registerRoutes(router *Router) {
 	if s.events != nil && s.runs != nil {
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events", s.handleListRunEvents)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events/stream", s.handleStreamRunEvents)
+	}
+	if s.cost != nil {
+		router.Handle(http.MethodGet, "/api/v1/metrics/cost", s.handleGetCost)
 	}
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/pr", s.handleOpenPullRequest)

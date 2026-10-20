@@ -207,6 +207,7 @@ func run() error {
 		PRs:        prService,
 		Console:    consoleStores,
 		Events:     &api.RunEventBundle{Events: store.NewRunEvents(pool)},
+		Cost:       &api.UsageBundle{Usage: store.NewUsage(pool)},
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

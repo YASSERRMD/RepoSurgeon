@@ -395,6 +395,46 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/metrics/cost:
+    get:
+      operationId: getCost
+      summary: Measured token usage and USD cost for the organization
+      description: |
+        Computes measured token counts and USD cost from the model_usage rows
+        the gateway records. Cached and uncached input are separated as the
+        provider reports them; nothing is estimated or invented. Requires
+        `project.read` on the caller's active organization.
+      tags: [console]
+      responses:
+        '200':
+          description: Measured cost and token usage, grouped by model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostAggregate'
+              example:
+                organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                total_usd: 1.234567
+                total_tokens: 12500
+                by_model:
+                  - model: step-5-preview
+                    input_tokens_cached: 3000
+                    input_tokens_uncached: 4500
+                    output_tokens: 2000
+                    usd_cost: 0.891234
+                  - model: step-3.7-flash
+                    input_tokens_cached: 1000
+                    input_tokens_uncached: 1500
+                    output_tokens: 500
+                    usd_cost: 0.343333
+                generated_at: '2026-10-10T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/auth/login:
     post:
       operationId: login
@@ -4468,7 +4508,41 @@ components:
           type: boolean
         updated_at:
           type: string
+
+    CostAggregate:
+      type: object
+      required: [organization_id, total_usd, total_tokens, by_model, generated_at]
+      properties:
+        organization_id:
+          type: string
+        total_usd:
+          type: number
+          format: double
+        total_tokens:
+          type: integer
+        by_model:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        generated_at:
+          type: string
           format: date-time
+
+    UsageRow:
+      type: object
+      required: [model, input_tokens_cached, input_tokens_uncached, output_tokens, usd_cost]
+      properties:
+        model:
+          type: string
+        input_tokens_cached:
+          type: integer
+        input_tokens_uncached:
+          type: integer
+        output_tokens:
+          type: integer
+        usd_cost:
+          type: number
+          format: double
 
     PreferencesSaveRequest:
       type: object

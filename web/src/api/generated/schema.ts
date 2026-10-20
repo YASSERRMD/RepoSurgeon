@@ -150,6 +150,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Measured token usage and USD cost for the organization
+         * @description Computes measured token counts and USD cost from the model_usage rows
+         *     the gateway records. Cached and uncached input are separated as the
+         *     provider reports them; nothing is estimated or invented. Requires
+         *     `project.read` on the caller's active organization.
+         */
+        get: operations["getCost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -1977,8 +2000,24 @@ export interface components {
                 [key: string]: unknown;
             };
             stored?: boolean;
-            /** Format: date-time */
             updated_at?: string;
+        };
+        CostAggregate: {
+            organization_id: string;
+            /** Format: double */
+            total_usd: number;
+            total_tokens: number;
+            by_model: components["schemas"]["UsageRow"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        UsageRow: {
+            model: string;
+            input_tokens_cached: number;
+            input_tokens_uncached: number;
+            output_tokens: number;
+            /** Format: double */
+            usd_cost: number;
         };
         PreferencesSaveRequest: {
             view: {
@@ -2542,6 +2581,53 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measured cost and token usage, grouped by model. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *       "total_usd": 1.234567,
+                     *       "total_tokens": 12500,
+                     *       "by_model": [
+                     *         {
+                     *           "model": "step-5-preview",
+                     *           "input_tokens_cached": 3000,
+                     *           "input_tokens_uncached": 4500,
+                     *           "output_tokens": 2000,
+                     *           "usd_cost": 0.891234
+                     *         },
+                     *         {
+                     *           "model": "step-3.7-flash",
+                     *           "input_tokens_cached": 1000,
+                     *           "input_tokens_uncached": 1500,
+                     *           "output_tokens": 500,
+                     *           "usd_cost": 0.343333
+                     *         }
+                     *       ],
+                     *       "generated_at": "2026-10-10T10:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CostAggregate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
             500: components["responses"]["InternalError"];
         };
     };
