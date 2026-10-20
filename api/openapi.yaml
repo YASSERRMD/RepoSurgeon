@@ -2671,6 +2671,47 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/runs/{run_id}/export:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [json, markdown]
+          default: json
+    get:
+      operationId: getRunExport
+      summary: Export a sanitized run trace as JSON or Markdown
+      description: |
+        Returns a sanitized run trace: the run's events, measured usage and
+        cost, and git/PR references. Raw credentials and secrets are redacted
+        before export. Requires `project.read` on the run's organization.
+      tags: [runs]
+      responses:
+        '200':
+          description: The sanitized trace document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceExport'
+            text/markdown:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/dashboard:
     get:
       operationId: getDashboard
@@ -4584,6 +4625,50 @@ components:
           type: string
         message:
           type: string
+
+    RunEvent:
+      type: object
+      required: [organization_id, run_id, causation_id, sequence, type, created_at]
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        project_id:
+          type: string
+        run_id:
+          type: string
+        actor_id:
+          type: string
+        causation_id:
+          type: string
+        sequence:
+          type: integer
+        type:
+          type: string
+        step:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    TraceExport:
+      type: object
+      required: [run_id, exported_at, events]
+      properties:
+        run_id:
+          type: string
+        exported_at:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunEvent'
+        usage:
+          $ref: '#/components/schemas/CostAggregate'
 
     PreferencesSaveRequest:
       type: object

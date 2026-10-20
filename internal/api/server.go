@@ -69,6 +69,8 @@ type Options struct {
 	Events EventsStore
 	// Cost exposes the M15 measured usage and cost aggregate.
 	Cost CostStore
+	// Exports exposes the M15 trace export metadata.
+	Exports ExportStore
 	// Telemetry carries the M15 OpenTelemetry provider and instruments.
 	Telemetry telemetry.Provider
 	// Instruments are the M15 metric instruments.
@@ -103,6 +105,7 @@ type Server struct {
 	console     ConsoleStores
 	events      EventsStore
 	cost        CostStore
+	exports     ExportStore
 	telemetry   telemetry.Provider
 	instruments *telemetry.Instruments
 
@@ -169,6 +172,7 @@ func NewServer(opts Options) (*Server, error) {
 		cost:        opts.Cost,
 		telemetry:   opts.Telemetry,
 		instruments: opts.Instruments,
+		exports:     opts.Exports,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -358,6 +362,7 @@ func (s *Server) registerRoutes(router *Router) {
 	if s.events != nil && s.runs != nil {
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events", s.handleListRunEvents)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events/stream", s.handleStreamRunEvents)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/export", s.handleGetExport)
 	}
 	if s.cost != nil {
 		router.Handle(http.MethodGet, "/api/v1/metrics/cost", s.handleGetCost)

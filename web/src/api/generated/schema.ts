@@ -1141,6 +1141,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/export": {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Export a sanitized run trace as JSON or Markdown
+         * @description Returns a sanitized run trace: the run's events, measured usage and
+         *     cost, and git/PR references. Raw credentials and secrets are redacted
+         *     before export. Requires `project.read` on the run's organization.
+         */
+        get: operations["getRunExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard": {
         parameters: {
             query?: never;
@@ -2046,6 +2072,27 @@ export interface components {
             severity: "info" | "warn" | "critical";
             condition: string;
             message: string;
+        };
+        RunEvent: {
+            id?: string;
+            organization_id: string;
+            project_id?: string;
+            run_id: string;
+            actor_id?: string;
+            causation_id: string;
+            sequence: number;
+            type: string;
+            step?: string;
+            payload?: Record<string, never>;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TraceExport: {
+            run_id: string;
+            /** Format: date-time */
+            exported_at: string;
+            events: components["schemas"]["RunEvent"][];
+            usage?: components["schemas"]["CostAggregate"];
         };
         PreferencesSaveRequest: {
             view: {
@@ -5220,6 +5267,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getRunExport: {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sanitized trace document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceExport"];
+                    "text/markdown": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     getDashboard: {

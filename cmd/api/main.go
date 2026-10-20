@@ -217,6 +217,7 @@ func run() error {
 		Console:     consoleStores,
 		Events:      &api.RunEventBundle{Events: store.NewRunEvents(pool)},
 		Cost:        &api.UsageBundle{Usage: store.NewUsage(pool)},
+		Exports:     &api.ExportBundle{Exports: store.NewExportRecords(pool)},
 		Telemetry:   tp,
 		Instruments: instruments,
 		Logger:      logger,
