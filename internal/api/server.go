@@ -16,6 +16,8 @@ import (
 	"github.com/YASSERRMD/RepoSurgeon/internal/health"
 	"github.com/YASSERRMD/RepoSurgeon/internal/migrations"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
+	"github.com/YASSERRMD/RepoSurgeon/internal/telemetry"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Options constructs a Server.
@@ -66,37 +68,43 @@ type Options struct {
 	// Events exposes the M15 run-event log and SSE stream.
 	Events EventsStore
 	// Cost exposes the M15 measured usage and cost aggregate.
-	Cost      CostStore
-	Logger    *slog.Logger
-	Version   string
-	GitCommit string
-	BuildTime string
+	Cost CostStore
+	// Telemetry carries the M15 OpenTelemetry provider and instruments.
+	Telemetry telemetry.Provider
+	// Instruments are the M15 metric instruments.
+	Instruments *telemetry.Instruments
+	Logger      *slog.Logger
+	Version     string
+	GitCommit   string
+	BuildTime   string
 }
 
 // Server holds the dependencies shared by every route.
 type Server struct {
-	cfg        *config.Config
-	db         health.Database
-	pendingFn  func(ctx context.Context) ([]migrations.Migration, error)
-	services   *Services
-	directory  SubjectDirectory
-	auth       *authServices
-	secrets    *secrets.Encryptor
-	gateway    *ModelGateway
-	githubApp  *GitHubServices
-	workspaces *gitworkspace.Manager
-	runs       RunScheduler
-	queue      TaskQueueService
-	tools      *ToolService
-	context    *ContextService
-	plans      *PlanService
-	patches    *PatchService
-	checks     *CheckService
-	recovery   *RecoveryService
-	prs        *PRService
-	console    ConsoleStores
-	events     EventsStore
-	cost       CostStore
+	cfg         *config.Config
+	db          health.Database
+	pendingFn   func(ctx context.Context) ([]migrations.Migration, error)
+	services    *Services
+	directory   SubjectDirectory
+	auth        *authServices
+	secrets     *secrets.Encryptor
+	gateway     *ModelGateway
+	githubApp   *GitHubServices
+	workspaces  *gitworkspace.Manager
+	runs        RunScheduler
+	queue       TaskQueueService
+	tools       *ToolService
+	context     *ContextService
+	plans       *PlanService
+	patches     *PatchService
+	checks      *CheckService
+	recovery    *RecoveryService
+	prs         *PRService
+	console     ConsoleStores
+	events      EventsStore
+	cost        CostStore
+	telemetry   telemetry.Provider
+	instruments *telemetry.Instruments
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -137,28 +145,30 @@ func NewServer(opts Options) (*Server, error) {
 		}
 	}
 	s := &Server{
-		cfg:        opts.Config,
-		db:         opts.DB,
-		pendingFn:  opts.PendingMigrations,
-		services:   opts.Services,
-		directory:  opts.SubjectDirectory,
-		auth:       opts.Auth,
-		secrets:    opts.Encryptor,
-		gateway:    opts.Gateway,
-		githubApp:  opts.GitHubApp,
-		workspaces: opts.Workspaces,
-		runs:       opts.Runs,
-		queue:      opts.Queue,
-		tools:      opts.Tools,
-		context:    opts.Context,
-		plans:      opts.Plans,
-		patches:    opts.Patches,
-		checks:     opts.Checks,
-		recovery:   opts.Recovery,
-		prs:        opts.PRs,
-		console:    opts.Console,
-		events:     opts.Events,
-		cost:       opts.Cost,
+		cfg:         opts.Config,
+		db:          opts.DB,
+		pendingFn:   opts.PendingMigrations,
+		services:    opts.Services,
+		directory:   opts.SubjectDirectory,
+		auth:        opts.Auth,
+		secrets:     opts.Encryptor,
+		gateway:     opts.Gateway,
+		githubApp:   opts.GitHubApp,
+		workspaces:  opts.Workspaces,
+		runs:        opts.Runs,
+		queue:       opts.Queue,
+		tools:       opts.Tools,
+		context:     opts.Context,
+		plans:       opts.Plans,
+		patches:     opts.Patches,
+		checks:      opts.Checks,
+		recovery:    opts.Recovery,
+		prs:         opts.PRs,
+		console:     opts.Console,
+		events:      opts.Events,
+		cost:        opts.Cost,
+		telemetry:   opts.Telemetry,
+		instruments: opts.Instruments,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -256,7 +266,31 @@ func (s *Server) Handler() http.Handler {
 	h = recoverMiddleware(s.log, h)
 	h = loggingMiddleware(s.log, h)
 	h = requestIDMiddleware(h)
+	if s.instruments != nil {
+		h = s.telemetryMiddleware(h)
+	}
 	return h
+}
+
+// telemetryMiddleware wraps the router with OpenTelemetry spans and metrics
+// for every request: a span per request, plus request count, latency and
+// error counters.
+func (s *Server) telemetryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ctx, span := telemetry.StartSpan(r.Context(), "http "+r.Method+" "+r.URL.Path,
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		defer span.End()
+
+		// Wrap the response writer to capture the status code.
+		rw := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rw, r.WithContext(ctx))
+
+		latency := time.Since(start)
+		telemetry.RecordRequest(s.instruments, r.Context(), r.Method, r.URL.Path, rw.status, latency)
+		span.SetAttributes(telemetry.SpanAttrs(r.Method, r.URL.Path, rw.status)...)
+	})
 }
 
 func (s *Server) registerRoutes(router *Router) {
@@ -327,6 +361,7 @@ func (s *Server) registerRoutes(router *Router) {
 	}
 	if s.cost != nil {
 		router.Handle(http.MethodGet, "/api/v1/metrics/cost", s.handleGetCost)
+		router.Handle(http.MethodGet, "/api/v1/alerts", s.handleGetAlerts)
 	}
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/pr", s.handleOpenPullRequest)

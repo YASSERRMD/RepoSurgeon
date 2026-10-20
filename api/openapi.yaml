@@ -435,6 +435,35 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/alerts:
+    get:
+      operationId: getAlerts
+      summary: Active alert conditions for the organization
+      description: |
+        Evaluates alert conditions: runaway cost, stuck leases, growing queue
+        age, failed CI, model rate-limit pressure and unexpected secret
+        denials. Requires `project.read` on the caller's active organization.
+      tags: [console]
+      responses:
+        '200':
+          description: Active alerts, empty when none fire.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+              example:
+                - severity: critical
+                  condition: runaway_cost
+                  message: measured cost $150 exceeds daily limit $100
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/auth/login:
     post:
       operationId: login
@@ -4543,6 +4572,18 @@ components:
         usd_cost:
           type: number
           format: double
+
+    Alert:
+      type: object
+      required: [severity, condition, message]
+      properties:
+        severity:
+          type: string
+          enum: [info, warn, critical]
+        condition:
+          type: string
+        message:
+          type: string
 
     PreferencesSaveRequest:
       type: object

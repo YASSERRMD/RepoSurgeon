@@ -173,6 +173,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active alert conditions for the organization
+         * @description Evaluates alert conditions: runaway cost, stuck leases, growing queue
+         *     age, failed CI, model rate-limit pressure and unexpected secret
+         *     denials. Requires `project.read` on the caller's active organization.
+         */
+        get: operations["getAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -2019,6 +2041,12 @@ export interface components {
             /** Format: double */
             usd_cost: number;
         };
+        Alert: {
+            /** @enum {string} */
+            severity: "info" | "warn" | "critical";
+            condition: string;
+            message: string;
+        };
         PreferencesSaveRequest: {
             view: {
                 [key: string]: unknown;
@@ -2624,6 +2652,38 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["CostAggregate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active alerts, empty when none fire. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "severity": "critical",
+                     *         "condition": "runaway_cost",
+                     *         "message": "measured cost $150 exceeds daily limit $100"
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["Alert"][];
                 };
             };
             401: components["responses"]["Unauthorized"];

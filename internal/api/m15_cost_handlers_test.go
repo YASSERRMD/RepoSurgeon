@@ -91,3 +91,48 @@ func TestGetCostSurfacesStoreFailure(t *testing.T) {
 		t.Fatalf("expected non-200, got %d", rec.Code)
 	}
 }
+
+func TestGetAlertsFiresRunawayCost(t *testing.T) {
+	cost := &fakeCostStore{aggregate: store.CostAggregate{
+		OrganizationID: "org_1",
+		TotalUSD:       150.0,
+		TotalTokens:    50000,
+		GeneratedAt:    time.Now().UTC(),
+	}}
+	harness := newCostHarness(t, cost)
+
+	token, _ := harness.login(t, "owner@example.test", testPassword)
+	rec := harness.doRequest(t, http.MethodGet, "/api/v1/alerts", "",
+		map[string]string{"Cookie": sessionCookieName + "=" + token})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"severity":"critical"`,
+		`"condition":"runaway_cost"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestGetAlertsEmptyWhenUnderLimit(t *testing.T) {
+	cost := &fakeCostStore{aggregate: store.CostAggregate{
+		OrganizationID: "org_1",
+		TotalUSD:       5.0,
+		GeneratedAt:    time.Now().UTC(),
+	}}
+	harness := newCostHarness(t, cost)
+
+	token, _ := harness.login(t, "owner@example.test", testPassword)
+	rec := harness.doRequest(t, http.MethodGet, "/api/v1/alerts", "",
+		map[string]string{"Cookie": sessionCookieName + "=" + token})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("expected empty alerts, got %s", rec.Body.String())
+	}
+}
