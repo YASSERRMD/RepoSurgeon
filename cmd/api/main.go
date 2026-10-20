@@ -206,6 +206,7 @@ func run() error {
 		Recovery:   recoveryService,
 		PRs:        prService,
 		Console:    consoleStores,
+		Events:     &api.RunEventBundle{Events: store.NewRunEvents(pool)},
 		Logger:     logger,
 		Version:    version,
 		GitCommit:  gitCommit,

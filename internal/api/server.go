@@ -62,7 +62,9 @@ type Options struct {
 	// PRs exposes the M13 pull-request lifecycle.
 	PRs *PRService
 	// Console exposes the M14 dashboard aggregate and view settings.
-	Console   ConsoleStores
+	Console ConsoleStores
+	// Events exposes the M15 run-event log and SSE stream.
+	Events    EventsStore
 	Logger    *slog.Logger
 	Version   string
 	GitCommit string
@@ -91,6 +93,7 @@ type Server struct {
 	recovery   *RecoveryService
 	prs        *PRService
 	console    ConsoleStores
+	events     EventsStore
 
 	// permissionResolver resolves the caller's permissions; it is replaced in
 	// tests.
@@ -151,6 +154,7 @@ func NewServer(opts Options) (*Server, error) {
 		recovery:   opts.Recovery,
 		prs:        opts.PRs,
 		console:    opts.Console,
+		events:     opts.Events,
 
 		log:       log,
 		version:   orDefault(opts.Version, "dev"),
@@ -313,6 +317,10 @@ func (s *Server) registerRoutes(router *Router) {
 	router.Handle(http.MethodGet, "/api/v1/dashboard", s.handleGetDashboard)
 	router.Handle(http.MethodGet, "/api/v1/me/preferences", s.handleGetPreferences)
 	router.Handle(http.MethodPut, "/api/v1/me/preferences", s.handleSavePreferences)
+	if s.events != nil && s.runs != nil {
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events", s.handleListRunEvents)
+		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events/stream", s.handleStreamRunEvents)
+	}
 	if s.runs != nil {
 		router.Handle(http.MethodPost, "/api/v1/runs/{run_id}/pr", s.handleOpenPullRequest)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/pr", s.handleGetPullRequest)

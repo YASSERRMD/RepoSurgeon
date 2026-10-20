@@ -130,7 +130,7 @@ func (r *Audit) ListForProject(ctx context.Context, organizationID, projectID st
 	var after any
 	var afterID string
 	if cursor != "" {
-		sequence, id, err := parseSequenceCursor(cursor)
+		sequence, id, err := ParseSequenceCursor(cursor)
 		if err != nil {
 			return Page[domain.AuditEvent]{}, err
 		}
@@ -159,7 +159,7 @@ func (r *Audit) ListForProject(ctx context.Context, organizationID, projectID st
 	}
 
 	return pageFromRows(items, limit, func(event domain.AuditEvent) string {
-		return sequenceCursor(event.Sequence, event.ID)
+		return SequenceCursor(event.Sequence, event.ID)
 	}), nil
 }
 
@@ -174,7 +174,7 @@ func (r *Audit) ListRecent(ctx context.Context, organizationID string, action st
 	var after any
 	var afterID string
 	if cursor != "" {
-		sequence, id, err := parseSequenceCursor(cursor)
+		sequence, id, err := ParseSequenceCursor(cursor)
 		if err != nil {
 			return Page[domain.AuditEvent]{}, err
 		}
@@ -202,6 +202,6 @@ func (r *Audit) ListRecent(ctx context.Context, organizationID string, action st
 	}
 
 	return pageFromRows(items, limit, func(event domain.AuditEvent) string {
-		return sequenceCursor(event.Sequence, event.ID)
+		return SequenceCursor(event.Sequence, event.ID)
 	}), nil
 }
