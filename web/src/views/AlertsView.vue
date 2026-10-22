@@ -36,9 +36,8 @@ watch(
       <div>
         <h2 class="page-title">Alerts</h2>
         <p class="muted page-subtitle">
-          Evaluated alert conditions for this organization: runaway cost, stuck leases,
-          growing queue age, failed CI, model rate-limit pressure and unexpected secret
-          denials.
+          Evaluated alert conditions for this organization: runaway cost, stuck leases, growing
+          queue age, failed CI, model rate-limit pressure and unexpected secret denials.
         </p>
       </div>
       <button

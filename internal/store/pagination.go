@@ -75,7 +75,7 @@ func parseCreatedCursor(cursor string) (time.Time, string, error) {
 	return at.UTC(), parts[1], nil
 }
 
-// sequenceCursor encodes the (sequence, id) sort key used by listings ordered
+// SequenceCursor encodes the (sequence, id) sort key used by listings ordered
 // by sequence DESC, id DESC.
 func SequenceCursor(sequence int64, id string) string {
 	return encodeCursor(strconv.FormatInt(sequence, 10), id)

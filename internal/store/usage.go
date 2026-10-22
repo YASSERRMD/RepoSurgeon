@@ -41,8 +41,14 @@ type Usage struct {
 // NewUsage binds the repository to the connection pool.
 func NewUsage(pool *pgxpool.Pool) *Usage { return &Usage{pool: pool} }
 
-// usageColumns is the projection shared by every cost read.
-const usageColumns = `model, prompt_tokens, cached_tokens, output_tokens, usd_cost, created_at`
+type modelUsageRow struct {
+	Model        string
+	PromptTokens int64
+	CachedTokens int64
+	OutputTokens int64
+	UsdCost      float64
+	CreatedAt    time.Time
+}
 
 // scanUsageRow reads one model_usage row into a UsageRow.
 func scanUsageRow(row pgx.CollectableRow) (UsageRow, error) {
@@ -57,15 +63,6 @@ func scanUsageRow(row pgx.CollectableRow) (UsageRow, error) {
 		OutputTokens:        raw.OutputTokens,
 		UsdCost:             raw.UsdCost,
 	}, nil
-}
-
-type modelUsageRow struct {
-	Model        string
-	PromptTokens int64
-	CachedTokens int64
-	OutputTokens int64
-	UsdCost      float64
-	CreatedAt    time.Time
 }
 
 // Aggregate computes the measured cost and token usage for one organization,

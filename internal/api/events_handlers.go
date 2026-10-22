@@ -165,7 +165,9 @@ func (s *Server) handleStreamRunEvents(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", store.SequenceCursor(ev.Sequence, ev.ID), ev.Type, b)
+		if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", store.SequenceCursor(ev.Sequence, ev.ID), ev.Type, b); err != nil {
+			return err
+		}
 		flusher.Flush()
 		lastCursor = store.SequenceCursor(ev.Sequence, ev.ID)
 		return nil
@@ -181,7 +183,9 @@ func (s *Server) handleStreamRunEvents(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-heartbeat.C:
-			fmt.Fprint(w, ": heartbeat\n\n")
+			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-poll.C:
 			page, err := s.events.List(r.Context(), session.OrganizationID, runID, 50, lastCursor)

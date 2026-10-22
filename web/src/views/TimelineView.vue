@@ -56,9 +56,9 @@ watch(
       <div>
         <h2 class="page-title">Timeline</h2>
         <p class="muted page-subtitle">
-          The append-only run event log for this organization. Every state change, step,
-          tool call, test result, approval, pull-request action and recovery is recorded
-          here before it is streamed to the timeline.
+          The append-only run event log for this organization. Every state change, step, tool call,
+          test result, approval, pull-request action and recovery is recorded here before it is
+          streamed to the timeline.
         </p>
       </div>
       <button
@@ -88,10 +88,14 @@ watch(
         </thead>
         <tbody>
           <tr v-for="event in items" :key="event.id" class="event-row">
-            <td class="event-time" data-testid="event-time">{{ createdLabel(event.created_at) }}</td>
+            <td class="event-time" data-testid="event-time">
+              {{ createdLabel(event.created_at) }}
+            </td>
             <td class="event-type" data-testid="event-type">{{ event.type }}</td>
             <td class="event-step" data-testid="event-step">{{ event.step ?? '—' }}</td>
-            <td class="event-payload" data-testid="event-payload">{{ JSON.stringify(event.payload) }}</td>
+            <td class="event-payload" data-testid="event-payload">
+              {{ JSON.stringify(event.payload) }}
+            </td>
           </tr>
           <tr v-if="items.length === 0">
             <td colspan="4" class="empty-cell">No events recorded yet.</td>

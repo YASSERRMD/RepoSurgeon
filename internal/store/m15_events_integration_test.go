@@ -201,10 +201,9 @@ func TestRunEventsOrderTracksInsertion(t *testing.T) {
 	}
 
 	events := NewRunEvents(env.pool)
-	var sequences []int64
 	for index := 0; index < 5; index++ {
 		time.Sleep(5 * time.Millisecond)
-		ev, err := events.Create(ctx, domain.RunEvent{
+		_, err := events.Create(ctx, domain.RunEvent{
 			OrganizationID: fixture.organization.ID,
 			RunID:          run.ID,
 			CausationID:    "cause_order",
@@ -214,7 +213,6 @@ func TestRunEventsOrderTracksInsertion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create event %d: %v", index, err)
 		}
-		sequences = append(sequences, ev.Sequence)
 	}
 
 	page, err := events.List(ctx, fixture.organization.ID, run.ID, 10, "")

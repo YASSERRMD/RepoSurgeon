@@ -852,7 +852,10 @@ export class HealthClient {
   }
 
   /** listRunEvents returns the append-only run event log, newest first. */
-  listRunEvents(params: { run_id: string; after?: string; limit?: number }, options?: RequestOptions): Promise<RunEventPage> {
+  listRunEvents(
+    params: { run_id: string; after?: string; limit?: number },
+    options?: RequestOptions,
+  ): Promise<RunEventPage> {
     return this.call<RunEventPage>({
       method: 'GET',
       path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(params.run_id)}/events${query({
@@ -888,7 +891,11 @@ export class HealthClient {
   }
 
   /** getRunExport returns a sanitized run trace as JSON or Markdown. */
-  getRunExport(runId: string, format: 'json' | 'markdown', options?: RequestOptions): Promise<TraceExport | { markdown: string }> {
+  getRunExport(
+    runId: string,
+    format: 'json' | 'markdown',
+    options?: RequestOptions,
+  ): Promise<TraceExport | { markdown: string }> {
     return this.call<TraceExport | { markdown: string }>({
       method: 'GET',
       path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/export${query({ format })}`,
@@ -899,7 +906,10 @@ export class HealthClient {
   }
 
   /** listOrgEvents returns recent events across the caller's organization. */
-  listOrgEvents(params: { after?: string; type?: string; limit?: number }, options?: RequestOptions): Promise<RunEventPage> {
+  listOrgEvents(
+    params: { after?: string; type?: string; limit?: number },
+    options?: RequestOptions,
+  ): Promise<RunEventPage> {
     return this.call<RunEventPage>({
       method: 'GET',
       path: `${this.baseUrl}/api/v1/events${query({

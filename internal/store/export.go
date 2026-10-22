@@ -35,14 +35,6 @@ func NewExportRecords(pool *pgxpool.Pool) *ExportRecords {
 	return &ExportRecords{pool: pool}
 }
 
-// scanExportRecord reads one export record row.
-func scanExportRecord(row pgx.CollectableRow) (ExportRecord, error) {
-	var record ExportRecord
-	err := row.Scan(&record.ID, &record.OrganizationID, &record.RunID, &record.Format,
-		&record.Status, &record.ExpiresAt, &record.CreatedAt)
-	return record, err
-}
-
 // Create inserts a new pending export record.
 func (e *ExportRecords) Create(ctx context.Context, organizationID, runID, format string, expiresAt time.Time) (ExportRecord, error) {
 	if !nonEmpty(organizationID, runID, format) {

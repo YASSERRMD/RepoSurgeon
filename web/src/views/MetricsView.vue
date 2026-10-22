@@ -7,7 +7,15 @@ const store = useCostStore();
 
 const selectedModel = ref<string>('');
 
-const modelRows = computed<{ model: string; input_tokens_cached: number; input_tokens_uncached: number; output_tokens: number; usd_cost: number }[]>(() => {
+const modelRows = computed<
+  {
+    model: string;
+    input_tokens_cached: number;
+    input_tokens_uncached: number;
+    output_tokens: number;
+    usd_cost: number;
+  }[]
+>(() => {
   const rows = store.aggregate?.by_model ?? [];
   if (selectedModel.value === '') return rows;
   return rows.filter((row) => row.model === selectedModel.value);
@@ -18,7 +26,11 @@ async function load(): Promise<void> {
 }
 
 function usd(value: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(value);
 }
 
 onMounted(load);
@@ -37,8 +49,8 @@ watch(
       <div>
         <h2 class="page-title">Metrics</h2>
         <p class="muted page-subtitle">
-          Measured token usage and USD cost from the model gateway. Cached and uncached input
-          are separated as the provider reports them; nothing is estimated.
+          Measured token usage and USD cost from the model gateway. Cached and uncached input are
+          separated as the provider reports them; nothing is estimated.
         </p>
       </div>
       <button
