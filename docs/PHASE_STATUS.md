@@ -36,7 +36,8 @@ no GPG signing, no AI/co-author trailers, no direct commits to `main`, no squash
 | M12 — Iterative debugging, recovery and state reconciliation | merged, branch deleted | PR #13 | 431a07c | `docs/milestone-reports/M12.md` |
 | M13 — Git commits, pull requests, CI review and safe merge | merged, branch deleted | PR #14 | b161580 | `docs/milestone-reports/M13.md` |
 | M14 — Complete web workbench and usable developer experience | merged, branch deleted | PR #15 | a213b52 | `docs/milestone-reports/M14.md` |
-| M15–M19 | — | not started | — | — | — |
+| M15 — Realtime timeline, auditability, cost and observability | merged, branch deleted | PR #16 | 509533f | `docs/milestone-reports/M15.md` |
+| M16–M19 | — | not started | — | — | — |
 
 ## Log
 
