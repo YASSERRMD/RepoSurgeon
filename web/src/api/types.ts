@@ -18,6 +18,14 @@ export type ProjectUpdate = components['schemas']['ProjectUpdate'];
 export type AuditEvent = components['schemas']['AuditEvent'];
 export type AuditEventPage = components['schemas']['AuditEventPage'];
 export type ConflictDetail = components['schemas']['ConflictDetail'];
+export type RunEvent = components['schemas']['RunEvent'];
+export type RunEventPage = {
+  items: RunEvent[];
+  next_cursor?: string;
+};
+export type CostAggregate = components['schemas']['CostAggregate'];
+export type Alert = components['schemas']['Alert'];
+export type TraceExport = components['schemas']['TraceExport'];
 
 /** Authentication (M02): browser sessions, never bearer tokens in storage. */
 export type LoginRequest = components['schemas']['LoginRequest'];

@@ -73,6 +73,25 @@ type AuditEvent struct {
 	CreatedAt      time.Time      `json:"created_at"`
 }
 
+// RunEvent is an append-only record of one step in a run's lifecycle: state
+// changes, steps, tool calls, test results, approvals, PR actions and
+// recoveries. CausationId links an event to the upstream action that caused it,
+// so clients can reconstruct the event graph without exposing hidden model
+// reasoning.
+type RunEvent struct {
+	ID             string         `json:"id"`
+	OrganizationID string         `json:"organization_id"`
+	ProjectID      string         `json:"project_id,omitempty"`
+	RunID          string         `json:"run_id"`
+	ActorID        string         `json:"actor_id,omitempty"`
+	CausationID    string         `json:"causation_id"`
+	Sequence       int64          `json:"sequence"`
+	Type           string         `json:"type"`
+	Step           string         `json:"step,omitempty"`
+	Payload        map[string]any `json:"payload"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
 // Page is one keyset-paginated result set and the wire shape shared by every
 // listing endpoint. NextCursor is empty when the page is the last one.
 type Page[T any] struct {

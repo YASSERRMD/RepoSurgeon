@@ -24,6 +24,7 @@ import (
 	"github.com/YASSERRMD/RepoSurgeon/internal/queue"
 	"github.com/YASSERRMD/RepoSurgeon/internal/secrets"
 	"github.com/YASSERRMD/RepoSurgeon/internal/store"
+	"github.com/YASSERRMD/RepoSurgeon/internal/telemetry"
 	"path/filepath"
 )
 
@@ -170,6 +171,14 @@ func run() error {
 		Preferences: store.NewPreferences(pool),
 	}
 
+	// M15: telemetry provider and instruments.
+	tp := telemetry.NewProvider(true)
+	meter := tp.Meter.Meter("reposurgeon/meter")
+	instruments, err := telemetry.NewInstruments(meter)
+	if err != nil {
+		return fmt.Errorf("telemetry instruments: %w", err)
+	}
+
 	// M13: pull-request lifecycle over the trusted GitHub transport. The
 	// installation token is held by the adapter here and never reaches a runner.
 	prService := api.NewStorePullRequestService(nil, pool, func(workspaceID string) string {
@@ -192,24 +201,29 @@ func run() error {
 			Organizations: store.NewOrganizations(pool),
 			Credentials:   store.NewCredentials(pool),
 		}),
-		Encryptor:  encryptor,
-		Gateway:    gateway,
-		GitHubApp:  githubApp,
-		Workspaces: workspaces,
-		Runs:       runsRepo,
-		Queue:      taskQueue,
-		Tools:      toolService,
-		Context:    contextService,
-		Plans:      planService,
-		Patches:    patchService,
-		Checks:     checkService,
-		Recovery:   recoveryService,
-		PRs:        prService,
-		Console:    consoleStores,
-		Logger:     logger,
-		Version:    version,
-		GitCommit:  gitCommit,
-		BuildTime:  buildTime,
+		Encryptor:   encryptor,
+		Gateway:     gateway,
+		GitHubApp:   githubApp,
+		Workspaces:  workspaces,
+		Runs:        runsRepo,
+		Queue:       taskQueue,
+		Tools:       toolService,
+		Context:     contextService,
+		Plans:       planService,
+		Patches:     patchService,
+		Checks:      checkService,
+		Recovery:    recoveryService,
+		PRs:         prService,
+		Console:     consoleStores,
+		Events:      &api.RunEventBundle{Events: store.NewRunEvents(pool)},
+		Cost:        &api.UsageBundle{Usage: store.NewUsage(pool)},
+		Exports:     &api.ExportBundle{Exports: store.NewExportRecords(pool)},
+		Telemetry:   tp,
+		Instruments: instruments,
+		Logger:      logger,
+		Version:     version,
+		GitCommit:   gitCommit,
+		BuildTime:   buildTime,
 	})
 	if err != nil {
 		return err

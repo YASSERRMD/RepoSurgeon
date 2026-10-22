@@ -150,6 +150,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Measured token usage and USD cost for the organization
+         * @description Computes measured token counts and USD cost from the model_usage rows
+         *     the gateway records. Cached and uncached input are separated as the
+         *     provider reports them; nothing is estimated or invented. Requires
+         *     `project.read` on the caller's active organization.
+         */
+        get: operations["getCost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active alert conditions for the organization
+         * @description Evaluates alert conditions: runaway cost, stuck leases, growing queue
+         *     age, failed CI, model rate-limit pressure and unexpected secret
+         *     denials. Requires `project.read` on the caller's active organization.
+         */
+        get: operations["getAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent events across the organization
+         * @description Returns the append-only run event log for the caller's organization,
+         *     newest first, with keyset pagination. Tenant-scoped: callers never see
+         *     another organization's events. Requires `project.read`.
+         */
+        get: operations["listOrgEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -624,6 +691,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List events for a run
+         * @description Returns the append-only run event log for one run, newest first, with
+         *     keyset pagination. The caller must be a member of the run's
+         *     organization.
+         */
+        get: operations["listRunEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tools": {
         parameters: {
             query?: never;
@@ -1090,6 +1181,32 @@ export interface paths {
          * @description Records why the change is abandoned and keeps the branch and its evidence. A merged pull request is never abandoned.
          */
         post: operations["abandonPullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/export": {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Export a sanitized run trace as JSON or Markdown
+         * @description Returns a sanitized run trace: the run's events, measured usage and
+         *     cost, and git/PR references. Raw credentials and secrets are redacted
+         *     before export. Requires `project.read` on the run's organization.
+         */
+        get: operations["getRunExport"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1977,8 +2094,51 @@ export interface components {
                 [key: string]: unknown;
             };
             stored?: boolean;
-            /** Format: date-time */
             updated_at?: string;
+        };
+        CostAggregate: {
+            organization_id: string;
+            /** Format: double */
+            total_usd: number;
+            total_tokens: number;
+            by_model: components["schemas"]["UsageRow"][];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        UsageRow: {
+            model: string;
+            input_tokens_cached: number;
+            input_tokens_uncached: number;
+            output_tokens: number;
+            /** Format: double */
+            usd_cost: number;
+        };
+        Alert: {
+            /** @enum {string} */
+            severity: "info" | "warn" | "critical";
+            condition: string;
+            message: string;
+        };
+        RunEvent: {
+            id?: string;
+            organization_id: string;
+            project_id?: string;
+            run_id: string;
+            actor_id?: string;
+            causation_id: string;
+            sequence: number;
+            type: string;
+            step?: string;
+            payload?: Record<string, never>;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TraceExport: {
+            run_id: string;
+            /** Format: date-time */
+            exported_at: string;
+            events: components["schemas"]["RunEvent"][];
+            usage?: components["schemas"]["CostAggregate"];
         };
         PreferencesSaveRequest: {
             view: {
@@ -2542,6 +2702,118 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measured cost and token usage, grouped by model. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *       "total_usd": 1.234567,
+                     *       "total_tokens": 12500,
+                     *       "by_model": [
+                     *         {
+                     *           "model": "step-5-preview",
+                     *           "input_tokens_cached": 3000,
+                     *           "input_tokens_uncached": 4500,
+                     *           "output_tokens": 2000,
+                     *           "usd_cost": 0.891234
+                     *         },
+                     *         {
+                     *           "model": "step-3.7-flash",
+                     *           "input_tokens_cached": 1000,
+                     *           "input_tokens_uncached": 1500,
+                     *           "output_tokens": 500,
+                     *           "usd_cost": 0.343333
+                     *         }
+                     *       ],
+                     *       "generated_at": "2026-10-10T10:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CostAggregate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active alerts, empty when none fire. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "severity": "critical",
+                     *         "condition": "runaway_cost",
+                     *         "message": "measured cost $150 exceeds daily limit $100"
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["Alert"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listOrgEvents: {
+        parameters: {
+            query?: {
+                /** @description Exact event type filter, for example `run.started`. */
+                type?: string;
+                /** @description Opaque cursor from a previous `next_cursor`. */
+                after?: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of run events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["RunEvent"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -3757,6 +4029,57 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listRunEvents: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from a previous `next_cursor`. */
+                after?: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of run events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "rev_1a2b3c4d5e6f7g8h9i0j",
+                     *           "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "run_id": "run_3h4k5m6n7p8q9r0s1t2u",
+                     *           "causation_id": "cause_start",
+                     *           "sequence": 1,
+                     *           "type": "run.started",
+                     *           "step": null,
+                     *           "payload": {},
+                     *           "created_at": "2026-10-10T10:00:00Z"
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": {
+                        items: components["schemas"]["RunEvent"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
     listTools: {
@@ -5074,6 +5397,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getRunExport: {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sanitized trace document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceExport"];
+                    "text/markdown": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     getDashboard: {

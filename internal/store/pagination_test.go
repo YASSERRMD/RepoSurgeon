@@ -25,11 +25,11 @@ func TestCursorRoundTrip(t *testing.T) {
 }
 
 func TestSequenceCursorRoundTrip(t *testing.T) {
-	cursor := sequenceCursor(9007199254740991, "aue_abcdefghijklmnopqrstuvwxy234567")
+	cursor := SequenceCursor(9007199254740991, "aue_abcdefghijklmnopqrstuvwxy234567")
 
-	sequence, id, err := parseSequenceCursor(cursor)
+	sequence, id, err := ParseSequenceCursor(cursor)
 	if err != nil {
-		t.Fatalf("parseSequenceCursor: %v", err)
+		t.Fatalf("ParseSequenceCursor: %v", err)
 	}
 	if sequence != 9007199254740991 {
 		t.Fatalf("sequence = %d", sequence)
@@ -82,9 +82,9 @@ func TestParseSequenceCursorRejectsTampering(t *testing.T) {
 	}
 	for name, cursor := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := parseSequenceCursor(cursor)
+			_, _, err := ParseSequenceCursor(cursor)
 			if !errors.Is(err, ErrValidation) {
-				t.Fatalf("parseSequenceCursor(%q) error = %v, want ErrValidation", cursor, err)
+				t.Fatalf("ParseSequenceCursor(%q) error = %v, want ErrValidation", cursor, err)
 			}
 		})
 	}

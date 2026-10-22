@@ -395,6 +395,120 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/metrics/cost:
+    get:
+      operationId: getCost
+      summary: Measured token usage and USD cost for the organization
+      description: |
+        Computes measured token counts and USD cost from the model_usage rows
+        the gateway records. Cached and uncached input are separated as the
+        provider reports them; nothing is estimated or invented. Requires
+        `project.read` on the caller's active organization.
+      tags: [console]
+      responses:
+        '200':
+          description: Measured cost and token usage, grouped by model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostAggregate'
+              example:
+                organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                total_usd: 1.234567
+                total_tokens: 12500
+                by_model:
+                  - model: step-5-preview
+                    input_tokens_cached: 3000
+                    input_tokens_uncached: 4500
+                    output_tokens: 2000
+                    usd_cost: 0.891234
+                  - model: step-3.7-flash
+                    input_tokens_cached: 1000
+                    input_tokens_uncached: 1500
+                    output_tokens: 500
+                    usd_cost: 0.343333
+                generated_at: '2026-10-10T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/alerts:
+    get:
+      operationId: getAlerts
+      summary: Active alert conditions for the organization
+      description: |
+        Evaluates alert conditions: runaway cost, stuck leases, growing queue
+        age, failed CI, model rate-limit pressure and unexpected secret
+        denials. Requires `project.read` on the caller's active organization.
+      tags: [console]
+      responses:
+        '200':
+          description: Active alerts, empty when none fire.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+              example:
+                - severity: critical
+                  condition: runaway_cost
+                  message: measured cost $150 exceeds daily limit $100
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/events:
+    get:
+      operationId: listOrgEvents
+      summary: List recent events across the organization
+      description: |
+        Returns the append-only run event log for the caller's organization,
+        newest first, with keyset pagination. Tenant-scoped: callers never see
+        another organization's events. Requires `project.read`.
+      tags: [runs]
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact event type filter, for example `run.started`.
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a previous `next_cursor`.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of run events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RunEvent'
+                  next_cursor:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/auth/login:
     post:
       operationId: login
@@ -1438,6 +1552,62 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/runs/{run_id}/events:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listRunEvents
+      summary: List events for a run
+      description: |
+        Returns the append-only run event log for one run, newest first, with
+        keyset pagination. The caller must be a member of the run's
+        organization.
+      tags: [runs]
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a previous `next_cursor`.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of run events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RunEvent'
+                  next_cursor:
+                    type: string
+              example:
+                items:
+                  - id: rev_1a2b3c4d5e6f7g8h9i0j
+                    organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                    run_id: run_3h4k5m6n7p8q9r0s1t2u
+                    causation_id: cause_start
+                    sequence: 1
+                    type: run.started
+                    step: null
+                    payload: {}
+                    created_at: '2026-10-10T10:00:00Z'
+                next_cursor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/tools:
     get:
@@ -2601,6 +2771,47 @@ paths:
           $ref: '#/components/responses/PermissionDenied'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/runs/{run_id}/export:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [json, markdown]
+          default: json
+    get:
+      operationId: getRunExport
+      summary: Export a sanitized run trace as JSON or Markdown
+      description: |
+        Returns a sanitized run trace: the run's events, measured usage and
+        cost, and git/PR references. Raw credentials and secrets are redacted
+        before export. Requires `project.read` on the run's organization.
+      tags: [runs]
+      responses:
+        '200':
+          description: The sanitized trace document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceExport'
+            text/markdown:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/dashboard:
     get:
@@ -4468,7 +4679,97 @@ components:
           type: boolean
         updated_at:
           type: string
+
+    CostAggregate:
+      type: object
+      required: [organization_id, total_usd, total_tokens, by_model, generated_at]
+      properties:
+        organization_id:
+          type: string
+        total_usd:
+          type: number
+          format: double
+        total_tokens:
+          type: integer
+        by_model:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+        generated_at:
+          type: string
           format: date-time
+
+    UsageRow:
+      type: object
+      required: [model, input_tokens_cached, input_tokens_uncached, output_tokens, usd_cost]
+      properties:
+        model:
+          type: string
+        input_tokens_cached:
+          type: integer
+        input_tokens_uncached:
+          type: integer
+        output_tokens:
+          type: integer
+        usd_cost:
+          type: number
+          format: double
+
+    Alert:
+      type: object
+      required: [severity, condition, message]
+      properties:
+        severity:
+          type: string
+          enum: [info, warn, critical]
+        condition:
+          type: string
+        message:
+          type: string
+
+    RunEvent:
+      type: object
+      required: [organization_id, run_id, causation_id, sequence, type, created_at]
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        project_id:
+          type: string
+        run_id:
+          type: string
+        actor_id:
+          type: string
+        causation_id:
+          type: string
+        sequence:
+          type: integer
+        type:
+          type: string
+        step:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    TraceExport:
+      type: object
+      required: [run_id, exported_at, events]
+      properties:
+        run_id:
+          type: string
+        exported_at:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunEvent'
+        usage:
+          $ref: '#/components/schemas/CostAggregate'
 
     PreferencesSaveRequest:
       type: object
