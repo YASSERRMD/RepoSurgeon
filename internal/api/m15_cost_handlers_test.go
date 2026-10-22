@@ -157,9 +157,13 @@ func (f *fakeExportStore) UpdateStatus(_ context.Context, _, _ string) error {
 
 func newExportHarness(t *testing.T, cost CostStore, exports ExportStore, events EventsStore) m02Harness {
 	t.Helper()
+	return newExportHarnessWithRuns(t, cost, exports, events, newFakeRunsStore())
+}
+
+func newExportHarnessWithRuns(t *testing.T, cost CostStore, exports ExportStore, events EventsStore, runs RunScheduler) m02Harness {
+	t.Helper()
 	base := newM02Harness(t, config.EnvTest)
 	base.identities.byEmail["owner@example.test"] = "hashed:" + testPassword
-	runs := newFakeRunsStore()
 	_, _ = runs.Create(context.Background(), store.Run{
 		ID:             "run_owner",
 		OrganizationID: "org_1",
@@ -230,5 +234,27 @@ func TestGetExportRejectsUnknownRun(t *testing.T) {
 		map[string]string{"Cookie": sessionCookieName + "=" + token})
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetExportRejectsCrossTenantRun(t *testing.T) {
+	exports := &fakeExportStore{}
+	runs := newFakeRunsStore()
+	// A run in another organization.
+	_, _ = runs.Create(context.Background(), store.Run{
+		ID:             "run_other",
+		OrganizationID: "org_other",
+		ProjectID:      "prj_other",
+		CreatedBy:      "usr_other",
+	})
+	// The harness run is in org_1; the export targets run_other in org_other.
+	events := &fakeEventsStore{}
+	harness := newExportHarnessWithRuns(t, &fakeCostStore{}, exports, events, runs)
+
+	token, _ := harness.login(t, "owner@example.test", testPassword)
+	rec := harness.doRequest(t, http.MethodGet, "/api/v1/runs/run_other/export", "",
+		map[string]string{"Cookie": sessionCookieName + "=" + token})
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body = %s, want 403 or 404", rec.Code, rec.Body.String())
 	}
 }
