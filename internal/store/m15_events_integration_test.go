@@ -83,9 +83,11 @@ func TestRunEventsAppendAndList(t *testing.T) {
 
 	// Events are tenant-scoped: another organization sees none.
 	other := env.seedOrganization(t, ctx)
+	otherProject := env.seedProject(t, ctx, other, "other org project")
 	otherRun, err := runs.Create(ctx, Run{
 		ID:             ids.MustNew("run"),
 		OrganizationID: other.organization.ID,
+		ProjectID:      otherProject.ID,
 		CreatedBy:      other.ownerID,
 	})
 	if err != nil {
