@@ -112,7 +112,10 @@ func TestRunEventsAppendAndList(t *testing.T) {
 	}
 
 	// Immutability: an update is refused by the trigger.
-	env.exec(ctx, t, `UPDATE run_events SET type = 'tampered' WHERE id = $1`, created[0].ID)
+	_, err = env.pool.Exec(ctx, `UPDATE run_events SET type = 'tampered' WHERE id = $1`, created[0].ID)
+	if err == nil {
+		t.Fatal("expected update to be rejected by append-only trigger")
+	}
 }
 
 // storeSequenceCursor is a test-only helper mirroring the store's opaque
