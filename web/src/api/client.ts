@@ -43,6 +43,10 @@ import type {
   ProjectPage,
   ProjectUpdate,
   ReadinessReport,
+  RunEventPage,
+  CostAggregate,
+  Alert,
+  TraceExport,
   RunContextRefreshResponse,
   RunContextResponse,
   RunListResponse,
@@ -841,6 +845,68 @@ export class HealthClient {
     return this.call<PreferencesView>({
       method: 'GET',
       path: `${this.baseUrl}/api/v1/me/preferences`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** listRunEvents returns the append-only run event log, newest first. */
+  listRunEvents(params: { run_id: string; after?: string; limit?: number }, options?: RequestOptions): Promise<RunEventPage> {
+    return this.call<RunEventPage>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(params.run_id)}/events${query({
+        after: params.after,
+        limit: params.limit,
+      })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getCost reads the measured token usage and USD cost of the organization. */
+  getCost(options?: RequestOptions): Promise<CostAggregate> {
+    return this.call<CostAggregate>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/metrics/cost`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getAlerts evaluates alert conditions for the caller's organization. */
+  getAlerts(options?: RequestOptions): Promise<Alert[]> {
+    return this.call<Alert[]>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/alerts`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** getRunExport returns a sanitized run trace as JSON or Markdown. */
+  getRunExport(runId: string, format: 'json' | 'markdown', options?: RequestOptions): Promise<TraceExport | { markdown: string }> {
+    return this.call<TraceExport | { markdown: string }>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/export${query({ format })}`,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      acceptStatuses: options?.acceptStatuses,
+    });
+  }
+
+  /** listOrgEvents returns recent events across the caller's organization. */
+  listOrgEvents(params: { after?: string; type?: string; limit?: number }, options?: RequestOptions): Promise<RunEventPage> {
+    return this.call<RunEventPage>({
+      method: 'GET',
+      path: `${this.baseUrl}/api/v1/events${query({
+        type: params.type,
+        after: params.after,
+        limit: params.limit,
+      })}`,
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       acceptStatuses: options?.acceptStatuses,

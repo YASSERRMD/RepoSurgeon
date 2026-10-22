@@ -195,6 +195,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent events across the organization
+         * @description Returns the append-only run event log for the caller's organization,
+         *     newest first, with keyset pagination. Tenant-scoped: callers never see
+         *     another organization's events. Requires `project.read`.
+         */
+        get: operations["listOrgEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -663,6 +685,30 @@ export interface paths {
         put?: never;
         /** Cancel a run */
         post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List events for a run
+         * @description Returns the append-only run event log for one run, newest first, with
+         *     keyset pagination. The caller must be a member of the run's
+         *     organization.
+         */
+        get: operations["listRunEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2738,6 +2784,39 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    listOrgEvents: {
+        parameters: {
+            query?: {
+                /** @description Exact event type filter, for example `run.started`. */
+                type?: string;
+                /** @description Opaque cursor from a previous `next_cursor`. */
+                after?: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of run events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["RunEvent"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -3950,6 +4029,57 @@ export interface operations {
             403: components["responses"]["PermissionDenied"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listRunEvents: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from a previous `next_cursor`. */
+                after?: string;
+                /** @description Page size (1-100, default 20). */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of run events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "rev_1a2b3c4d5e6f7g8h9i0j",
+                     *           "organization_id": "org_2f8s8k4m2c9v0a1b3d5e7f9g1h",
+                     *           "run_id": "run_3h4k5m6n7p8q9r0s1t2u",
+                     *           "causation_id": "cause_start",
+                     *           "sequence": 1,
+                     *           "type": "run.started",
+                     *           "step": null,
+                     *           "payload": {},
+                     *           "created_at": "2026-10-10T10:00:00Z"
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": {
+                        items: components["schemas"]["RunEvent"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PermissionDenied"];
+            404: components["responses"]["NotFound"];
         };
     };
     listTools: {

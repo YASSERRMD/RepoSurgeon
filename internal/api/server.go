@@ -364,6 +364,9 @@ func (s *Server) registerRoutes(router *Router) {
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/events/stream", s.handleStreamRunEvents)
 		router.Handle(http.MethodGet, "/api/v1/runs/{run_id}/export", s.handleGetExport)
 	}
+	if s.events != nil {
+		router.Handle(http.MethodGet, "/api/v1/events", s.handleListOrgEvents)
+	}
 	if s.cost != nil {
 		router.Handle(http.MethodGet, "/api/v1/metrics/cost", s.handleGetCost)
 		router.Handle(http.MethodGet, "/api/v1/alerts", s.handleGetAlerts)

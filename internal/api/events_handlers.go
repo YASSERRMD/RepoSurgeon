@@ -21,6 +21,7 @@ import (
 type EventsStore interface {
 	Create(ctx context.Context, event domain.RunEvent) (domain.RunEvent, error)
 	List(ctx context.Context, organizationID, runID string, limit int, cursor string) (domain.Page[domain.RunEvent], error)
+	ListRecent(ctx context.Context, organizationID string, eventType string, limit int, cursor string) (domain.Page[domain.RunEvent], error)
 }
 
 // RunEventBundle adapts the durable event repository to EventsStore.
@@ -36,6 +37,11 @@ func (b *RunEventBundle) Create(ctx context.Context, event domain.RunEvent) (dom
 // List returns a page of run events for one run.
 func (b *RunEventBundle) List(ctx context.Context, organizationID, runID string, limit int, cursor string) (domain.Page[domain.RunEvent], error) {
 	return b.Events.List(ctx, organizationID, runID, limit, cursor)
+}
+
+// ListRecent returns a page of recent events across an organization.
+func (b *RunEventBundle) ListRecent(ctx context.Context, organizationID string, eventType string, limit int, cursor string) (domain.Page[domain.RunEvent], error) {
+	return b.Events.ListRecent(ctx, organizationID, eventType, limit, cursor)
 }
 
 var _ EventsStore = (*RunEventBundle)(nil)
@@ -69,6 +75,37 @@ func (s *Server) handleListRunEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	cursor := r.URL.Query().Get("after")
 	page, err := s.events.List(r.Context(), session.OrganizationID, runID, limit, cursor)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, eventPage{Items: page.Items, NextCursor: page.NextCursor})
+}
+
+// handleListOrgEvents returns a page of recent events across the caller's
+// organization, newest first. Tenant-scoped: callers never see another
+// organization's events.
+func (s *Server) handleListOrgEvents(w http.ResponseWriter, r *http.Request) {
+	session, ok := sessionFrom(r.Context())
+	if !ok {
+		requireSession(w, r)
+		return
+	}
+	if !s.checkPermission(w, r, session, "project.read") {
+		return
+	}
+	limit := store.DefaultPageLimit
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			if parsed > store.MaxPageLimit {
+				parsed = store.MaxPageLimit
+			}
+			limit = parsed
+		}
+	}
+	eventType := r.URL.Query().Get("type")
+	cursor := r.URL.Query().Get("after")
+	page, err := s.events.ListRecent(r.Context(), session.OrganizationID, eventType, limit, cursor)
 	if err != nil {
 		writeDomainError(w, r, err)
 		return

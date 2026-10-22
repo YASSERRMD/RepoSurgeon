@@ -2,6 +2,10 @@ import type { RouteLocationNormalized, RouteLocationRaw, RouteRecordRaw } from '
 
 import ApprovalsView from '@/views/ApprovalsView.vue';
 import AuditView from '@/views/AuditView.vue';
+import AlertsView from '@/views/AlertsView.vue';
+import MetricsView from '@/views/MetricsView.vue';
+import TimelineView from '@/views/TimelineView.vue';
+import RunTimelineView from '@/views/RunTimelineView.vue';
 import ContextInspectorView from '@/views/ContextInspectorView.vue';
 import DashboardView from '@/views/DashboardView.vue';
 import IssuesView from '@/views/IssuesView.vue';
@@ -127,6 +131,30 @@ export const routes: RouteRecordRaw[] = [
     name: 'audit',
     component: AuditView,
     meta: { title: 'Audit', requiresAuth: true },
+  },
+  {
+    path: '/timeline',
+    name: 'timeline',
+    component: TimelineView,
+    meta: { title: 'Timeline', requiresAuth: true },
+  },
+  {
+    path: '/metrics',
+    name: 'metrics',
+    component: MetricsView,
+    meta: { title: 'Metrics', requiresAuth: true },
+  },
+  {
+    path: '/alerts',
+    name: 'alerts',
+    component: AlertsView,
+    meta: { title: 'Alerts', requiresAuth: true },
+  },
+  {
+    path: '/runs/:runId/timeline',
+    name: 'run-timeline',
+    component: RunTimelineView,
+    meta: { title: 'Run timeline', requiresAuth: true },
   },
   {
     path: '/settings',

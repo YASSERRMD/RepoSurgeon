@@ -464,6 +464,51 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/events:
+    get:
+      operationId: listOrgEvents
+      summary: List recent events across the organization
+      description: |
+        Returns the append-only run event log for the caller's organization,
+        newest first, with keyset pagination. Tenant-scoped: callers never see
+        another organization's events. Requires `project.read`.
+      tags: [runs]
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact event type filter, for example `run.started`.
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a previous `next_cursor`.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of run events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RunEvent'
+                  next_cursor:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/auth/login:
     post:
       operationId: login
@@ -1507,6 +1552,62 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/runs/{run_id}/events:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listRunEvents
+      summary: List events for a run
+      description: |
+        Returns the append-only run event log for one run, newest first, with
+        keyset pagination. The caller must be a member of the run's
+        organization.
+      tags: [runs]
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a previous `next_cursor`.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of run events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RunEvent'
+                  next_cursor:
+                    type: string
+              example:
+                items:
+                  - id: rev_1a2b3c4d5e6f7g8h9i0j
+                    organization_id: org_2f8s8k4m2c9v0a1b3d5e7f9g1h
+                    run_id: run_3h4k5m6n7p8q9r0s1t2u
+                    causation_id: cause_start
+                    sequence: 1
+                    type: run.started
+                    step: null
+                    payload: {}
+                    created_at: '2026-10-10T10:00:00Z'
+                next_cursor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/tools:
     get:

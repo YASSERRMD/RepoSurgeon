@@ -41,6 +41,19 @@ func (f *fakeEventsStore) List(_ context.Context, organizationID, runID string, 
 	return domain.Page[domain.RunEvent]{Items: items}, nil
 }
 
+func (f *fakeEventsStore) ListRecent(_ context.Context, organizationID string, _ string, limit int, cursor string) (domain.Page[domain.RunEvent], error) {
+	if f.listErr != nil {
+		return domain.Page[domain.RunEvent]{}, f.listErr
+	}
+	items := make([]domain.RunEvent, 0, len(f.events))
+	for _, ev := range f.events {
+		if ev.OrganizationID == organizationID {
+			items = append(items, ev)
+		}
+	}
+	return domain.Page[domain.RunEvent]{Items: items}, nil
+}
+
 func newEventsHarness(t *testing.T, events EventsStore) m02Harness {
 	t.Helper()
 	base := newM02Harness(t, config.EnvTest)
@@ -192,5 +205,38 @@ func TestStreamRunEventsRejectsUnknownRun(t *testing.T) {
 	}
 	if errorCode(rec) != "not_found" {
 		t.Fatalf("code = %q, want not_found", errorCode(rec))
+	}
+}
+
+func TestListOrgEventsReturnsOrgPage(t *testing.T) {
+	events := &fakeEventsStore{}
+	harness := newEventsHarness(t, events)
+
+	ctx := context.Background()
+	_, _ = events.Create(ctx, domain.RunEvent{
+		OrganizationID: "org_1",
+		RunID:          "run_owner",
+		CausationID:    "cause_1",
+		Type:           "step.began",
+	})
+	_, _ = events.Create(ctx, domain.RunEvent{
+		OrganizationID: "org_other",
+		RunID:          "run_other",
+		CausationID:    "cause_other",
+		Type:           "tool.called",
+	})
+
+	token, _ := harness.login(t, "owner@example.test", testPassword)
+	rec := harness.doRequest(t, http.MethodGet, "/api/v1/events", "",
+		map[string]string{"Cookie": sessionCookieName + "=" + token})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"step.began"`) {
+		t.Fatalf("body missing org_1 event: %s", body)
+	}
+	if strings.Contains(body, `"type":"tool.called"`) {
+		t.Fatalf("body should not contain cross-tenant event: %s", body)
 	}
 }

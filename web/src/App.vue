@@ -28,6 +28,9 @@ const primaryNav = [
   { to: '/models', label: 'Models', permission: 'project.read' },
   { to: '/approvals', label: 'Approvals', permission: 'approval.decide' },
   { to: '/audit', label: 'Audit', permission: 'project.read' },
+  { to: '/timeline', label: 'Timeline', permission: 'project.read' },
+  { to: '/metrics', label: 'Metrics', permission: 'project.read' },
+  { to: '/alerts', label: 'Alerts', permission: 'project.read' },
   { to: '/settings', label: 'Settings', permission: 'project.read' },
 ];
 
